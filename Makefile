@@ -50,6 +50,7 @@ run: $(TARGET)
 	$(TARGET)
 
 install: $(TARGET)
+	mkdir -p /usr/local/bin
 	cp $(TARGET) /usr/local/bin/universe-mindmap
 	cp $(TARGET) /usr/local/bin/umm
 
