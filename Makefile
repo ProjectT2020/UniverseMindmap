@@ -32,7 +32,7 @@ APP_SRCS := \
 CORE_OBJS := $(CORE_SRCS:.c=.o)
 APP_OBJS := $(APP_SRCS:.c=.o)
 
-TARGET := bin/mindnote
+TARGET := bin/universe-mindmap
 
 .PHONY: all clean run help install
 
@@ -50,17 +50,17 @@ run: $(TARGET)
 	$(TARGET)
 
 install: $(TARGET)
-	cp $(TARGET) /usr/local/bin/mindnote
+	cp $(TARGET) /usr/local/bin/universe-mindmap
 
 uninstall:
-	rm -f /usr/local/bin/mindnote
+	rm -f /usr/local/bin/universe-mindmap
 
 clean:
 	rm -f $(CORE_OBJS) $(APP_OBJS) $(TARGET)
 	rm -f $(CORE_OBJS:.o=.d) $(APP_OBJS:.o=.d)
 
 help:
-	@echo "MindNote - Build System"
+	@echo "universe-mindmap - Build System"
 	@echo ""
 	@echo "Targets:"
 	@echo "  make all      Build the application (default)"

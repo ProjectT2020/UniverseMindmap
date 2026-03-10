@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
     }
     
     // init database file path
-    const char *db_file = "mindnote.umt";
+    const char *db_file = "universe-mindmap.umt";
     if (optind < argc) {
         db_file = argv[optind];
     }
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
     if (debug_mode) {
         debuging = 1;
     }
-    log_debug("MindNote application starting...");
+    log_debug("universe-mindmap application starting...");
 
     if(disable_wal_option){
         log_debug("WAL disabled by command line option");

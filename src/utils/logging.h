@@ -12,7 +12,7 @@ typedef enum {
 extern int debuging;
 extern char status_message[1024];
 
-// init logging, default to ~/.cache/mindnote/um.log
+// init logging, default to ~/.cache/universe-mindmap/um.log
 int init_logging();
 
 // log_file_path: NULL log to stderr, otherwise log to the specified file

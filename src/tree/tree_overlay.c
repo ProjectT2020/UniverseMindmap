@@ -164,7 +164,7 @@ TreeOverlay* tree_overlay_create_empty(const char *path) {
         (TreeNode){ .kind = TREE_NODE_NULL }, // next sibling
         0, // descendents
         TREE_NODE_FLAG_SHOW_HIDDEN_CHILDREN, // flags
-        "MindNote" // text
+        "universe-mindmap" // text
     );
     radix_tree_insert_mem_address(ov->id_map, new_mut->node_id, (void *)new_mut);
     ov->root = (TreeNode){

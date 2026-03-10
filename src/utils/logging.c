@@ -30,16 +30,16 @@ int logging_init(char *log_file_path){
  * return: 0 on success, -1 on failure
  */
 int init_logging(){
-    // ~/.cache/mindnote/um.log
+    // ~/.cache/universe-mindmap/um.log
     const char *home = getenv("HOME");
     if(home == NULL){
         fprintf(stderr, "HOME environment variable not set, cannot initialize logging\n");
         return -1;
     }
     char log_path[PATH_MAX];
-    snprintf(log_path, sizeof(log_path), "%s/.cache/mindnote", home);
+    snprintf(log_path, sizeof(log_path), "%s/.cache/universe-mindmap", home);
     mkdir(log_path, 0700); // ignore EEXIST
-    snprintf(log_path, sizeof(log_path), "%s/.cache/mindnote/um.log", home);
+    snprintf(log_path, sizeof(log_path), "%s/.cache/universe-mindmap/um.log", home);
     log_file = fopen(log_path, "a");
     if(log_file == NULL){
         fprintf(stderr, "Failed to open log file at %s\n", log_path);

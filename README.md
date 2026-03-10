@@ -1,6 +1,6 @@
-# MindNote — High-Performance Knowledge Engine
+# UniverseMindmap — High-Performance Knowledge Engine
 
-MindNote is a high-performance knowledge engine written in **pure C**, with a **mindmap-like UI**, capable of handling **over 1M nodes** with ease — far more than most people will ever write down in a lifetime.
+UniverseMindmap is a high-performance knowledge engine written in **pure C**, capable of handling **over 1M nodes** with ease — far more than most people will ever write down in a lifetime.
 
 All data is stored **locally**, ensuring complete privacy.
 Startup is **instant**, regardless of note size.
@@ -8,9 +8,8 @@ Startup is **instant**, regardless of note size.
 ![screenshot](doc/screenshot-cgroups.png)
 
 If you want a note system that can **grow with you**, this is it.
-If you love **Vim**, you will love **MindNote**.
+If you love **Vim**, you will love **UniverseMindmap**.
 
----
 
 # Quick Start
 
@@ -21,22 +20,20 @@ Build, install, and start your journey:
 ```bash
 make
 sudo make install
-cd ~/Documents && mindnote
+cd ~/Documents && UniverseMindmap
 ```
 
----
 
 # Basic Usage
 
 * **Tab / A** — create a new child node
 * **Enter / o** — create a new sibling node
 * **←↓↑→ / hjkl** — move left / down / up / right
-* **ZZ** — save and exit (saved in the current directory as `mindnote.umt`)
+* **ZZ** — save and exit (saved in the current directory as `UniverseMindmap.umt`)
 * **PgUp / Ctrl+B** — scroll view up
 * **PgDn / Ctrl+F** — scroll view down
 * **searching** - `/` + `keyword` to search, press `n` to the next matching node, `N` to the previous matching node
 
----
 
 # Highlights
 
@@ -46,7 +43,6 @@ cd ~/Documents && mindnote
 * **Fast Navigation** — search, bookmarks, jump history, term definition and more
 * **Node Counter** — see how many notes you have taken so far
 
----
 
 # Advanced Usage
 
@@ -60,16 +56,14 @@ cd ~/Documents && mindnote
 * **copy text to system clipboard:** `gy`
 * **copy subtree to system clipboard:** `gY`
 
----
 
 ## Node Links & Definitions
 
-You can mark a node as the **definition of a term** and jump to it anywhere in MindNote.
+You can mark a node as the **definition of a term** and jump to it anywhere in UniverseMindmap.
 
 * **mark term:** `m[` — mark current node as a term and surround it with `[]`
 * **jump to definition:** if the current node text matches a marked term, press `gd` will jump to the marked term
 
----
 
 ## Bookmarks
 
@@ -78,7 +72,6 @@ You can mark a node as the **definition of a term** and jump to it anywhere in M
 
 * **jump to bookmark:** `'` + `mark_character`
 
----
 
 ## Advanced Navigation
 
@@ -98,7 +91,6 @@ You can mark a node as the **definition of a term** and jump to it anywhere in M
 
 * **go to first sibling:** `gg`
 
----
 
 ## View
 
@@ -107,7 +99,6 @@ You can mark a node as the **definition of a term** and jump to it anywhere in M
 * **scroll one line down:** `Ctrl+E`
 * **scroll one line up:** `Ctrl+Y`
 
----
 
 ## Folding
 
@@ -116,11 +107,10 @@ You can mark a node as the **definition of a term** and jump to it anywhere in M
 * **reveal more:** `zr`
 * **reveal less:** `zm`
 
----
 
 ## Import / Export
 
-MindNote supports importing and exporting **plain text**.
+UniverseMindmap supports importing and exporting **plain text**.
 
 A command mode similar to Vim is available:
 
@@ -129,13 +119,12 @@ A command mode similar to Vim is available:
 
 **note:** must specify file extension .txt for future support of other format
 
----
 
 # Contributing
 
 Contributions are welcome.
 
-You can help improve MindNote in several ways:
+You can help improve UniverseMindmap in several ways:
 
 ### 1. Features
 
@@ -156,5 +145,3 @@ You can help improve MindNote in several ways:
 * Share real-world usage experiences
 
 Before submitting a pull request, please open an issue if the change is substantial so it can be discussed first.
-
----
