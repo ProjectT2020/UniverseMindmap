@@ -29,7 +29,7 @@ cd ~/Documents && universe-mindmap
 * **Tab / A** — create a new child node
 * **Enter / o** — create a new sibling node
 * **←↓↑→ / hjkl** — move left / down / up / right
-* **s** - update current node's text
+* **s** - update (substitute) current node's text
 * **ZZ** — save and exit (saved in the current directory as `UniverseMindmap.umt`)
 * **PgUp / Ctrl+B** — scroll view up
 * **PgDn / Ctrl+F** — scroll view down
