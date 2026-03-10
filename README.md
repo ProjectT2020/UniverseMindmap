@@ -34,15 +34,17 @@ cd ~/Documents && mindnote
 * **ZZ** — save and exit (saved in the current directory as `mindnote.umt`)
 * **PgUp / Ctrl+B** — scroll view up
 * **PgDn / Ctrl+F** — scroll view down
+* **searching** - `/` + `keyword` to search, press `n` to the next matching node, `N` to the previous matching node
 
 ---
 
 # Highlights
 
-* **Fast Navigation** — search, bookmarks, jump history, and more
 * **High Performance** — handles **1M+ nodes** with ease and **starts instantly**
+* **Crash-Safe / WAL** — uses **Write-Ahead Logging** to prevent data loss in case of system crash
 * **Local-First** — all data is stored in a local file
-* **Node Counter** — see how many notes you have taken
+* **Fast Navigation** — search, bookmarks, jump history, and more
+* **Node Counter** — see how many notes you have taken so far
 
 ---
 
