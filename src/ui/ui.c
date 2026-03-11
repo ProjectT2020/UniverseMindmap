@@ -228,6 +228,8 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
                     log_info("Unknown input sequence: f%c%c\n", next, next2);
                 }
             } else {
+                ctx->mark_and_show_visible_nodes = false;
+                ctx->fix_view = false;
                 log_info("Unknown input sequence: f%c\n", next);
             }
 
