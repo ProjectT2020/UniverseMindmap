@@ -932,6 +932,147 @@ TreeNode ui_last_visible_child(UiContext *ui, TreeNode parent){
     return last_visible;
 }
 
+TreeNode ui_parent_level_next_visible_sibling(UiContext *ui, TreeNode parent) {
+    int depth = 0;
+    bool from_child = false;
+    TreeNode next_sibling = ui_next_visible_sibling(ui, parent);
+    if(!tree_node_is_null(next_sibling)){
+        goto found;
+    }else{
+        parent = tree_node_parent(ui->overlay, parent);
+        depth--;
+        from_child = true;
+    }
+    while(!tree_node_is_null(parent)){
+        if(depth == 0){
+            TreeNode child = ui_first_visible_child(ui, parent);
+            if(tree_node_is_null(child)){
+                parent = tree_node_parent(ui->overlay, parent);
+                depth--;
+                from_child = true;
+                continue;
+            }else{
+                next_sibling = parent;
+                goto found;
+            }
+        }else {
+            assert(depth < 0);
+            if(from_child){
+                // if coming from child, try next sibling
+                TreeNode sibling = ui_next_visible_sibling(ui, parent);
+                if(tree_node_is_null(sibling)){
+                    // no next sibling, go to parent
+                    parent = tree_node_parent(ui->overlay, parent);
+                    depth--;
+                    from_child = true;
+                    continue;
+                }else{
+                    // found next sibling, go to it
+                    parent = sibling;
+                    from_child = false;
+                    continue;
+                }
+            }else{
+                // explore child first
+                TreeNode child = ui_first_visible_child(ui, parent);
+                if(tree_node_is_null(child)){
+                    TreeNode sibling = ui_next_visible_sibling(ui, parent);
+                    if(tree_node_is_null(sibling)){
+                        parent = tree_node_parent(ui->overlay, parent);
+                        depth--;
+                        from_child = true;
+                        continue;
+                    }else{
+                        parent = sibling;
+                        from_child = false;
+                        continue;
+                    }
+                }else{
+                    // if has child, go to child first
+                    parent = child;
+                    depth++;
+                    from_child = false;
+                    continue;
+                }
+            }
+        }
+    }
+
+found:
+    return next_sibling;
+}
+
+TreeNode ui_parent_level_prev_visible_sibling(UiContext *ui, TreeNode parent){
+    int depth = 0;
+    bool from_child = false;
+    TreeNode prev_sibling = ui_previous_visible_sibling(ui, parent);
+    if(!tree_node_is_null(prev_sibling)){
+        goto found;
+    }else{
+        parent = tree_node_parent(ui->overlay, parent);
+        depth--;
+        from_child = true;
+    }
+    while(!tree_node_is_null(parent)){
+        if(depth == 0){
+            TreeNode child = ui_last_visible_child(ui, parent);
+            if(tree_node_is_null(child)){
+                parent = tree_node_parent(ui->overlay, parent);
+                depth--;
+                from_child = true;
+                continue;
+            }else{
+                prev_sibling = parent;
+                goto found;
+            }
+        }else {
+            assert(depth < 0);
+            if(from_child){
+                // if coming from child, try previous sibling
+                TreeNode sibling = ui_previous_visible_sibling(ui, parent);
+                if(tree_node_is_null(sibling)){
+                    // no previous sibling, go to parent
+                    parent = tree_node_parent(ui->overlay, parent);
+                    depth--;
+                    from_child = true;
+                    continue;
+                }else{
+                    // found previous sibling, go to it
+                    parent = sibling;
+                    from_child = false;
+                    continue;
+                }
+            }else{
+                // explore child first
+                TreeNode child = ui_last_visible_child(ui, parent);
+                if(tree_node_is_null(child)){
+                    TreeNode sibling = ui_previous_visible_sibling(ui, parent);
+                    if(tree_node_is_null(sibling)){
+                        // no previous sibling, go to parent
+                        parent = tree_node_parent(ui->overlay, parent);
+                        depth--;
+                        from_child = true;
+                        continue;
+                    }else{
+                        // found previous sibling, go to it
+                        parent = sibling;
+                        from_child = false;
+                        continue;
+                    }
+                }else{
+                    // if has child, go to child first
+                    parent = child;
+                    depth++;
+                    from_child = false;
+                    continue;
+                }
+            }
+        }
+    }
+found:
+    return prev_sibling;
+}
+
 void ui_move_focus_right(UiContext *ui) {
     TreeNode current = ui->current_node;
     log_debug("[ui_move_focus_right] current id=%lu, kind=%d", tree_node_id(current), current.kind);

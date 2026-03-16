@@ -1351,21 +1351,13 @@ static void handle_move_parent_prev_sibling_begin(AppState *app) {
     log_debug("[handle_move_parent_prev_sibling_begin] Moving focus to first visible child of parent previous sibling");
     TreeNode current = app->ui->current_node;
     TreeNode parent = tree_node_parent(app->tree_overlay, current);
-    if(tree_node_is_null(parent)){
-        log_info("Current node has no parent, cannot move to parent previous sibling");
-        return;
-    }
-    TreeNode prev_sibling = ui_previous_visible_sibling(app->ui, parent);
+    TreeNode prev_sibling = ui_parent_level_prev_visible_sibling(app->ui, parent);
     if(tree_node_is_null(prev_sibling)){
         log_info("Parent node has no previous visible sibling, cannot move to parent previous sibling");
         return;
-    }
-    TreeNode target = ui_first_visible_child(app->ui, prev_sibling);
-    if(tree_node_is_null(target)){
-        update_current_with_history(app, prev_sibling);
-        log_info("Parent previous sibling has no visible child, moved focus to parent previous sibling");
     }else{
-        update_current_with_history(app, target);
+        TreeNode sibling_begin = ui_first_visible_child(app->ui, prev_sibling);
+        update_current_with_history(app, sibling_begin);
         log_info("Moved focus to first visible child of parent previous sibling");
     }
 }
@@ -1373,22 +1365,15 @@ static void handle_move_parent_prev_sibling_begin(AppState *app) {
 static void handle_move_parent_next_sibling_end(AppState *app) {
     log_debug("[handle_move_parent_next_sibling_end] Moving focus to last visible child of parent next sibling");
     TreeNode current = app->ui->current_node;
+
     TreeNode parent = tree_node_parent(app->tree_overlay, current);
-    if(tree_node_is_null(parent)){
-        log_info("Current node has no parent, cannot move to parent next sibling");
-        return;
-    }
-    TreeNode next_sibling = ui_next_visible_sibling(app->ui, parent);
+    TreeNode next_sibling = ui_parent_level_next_visible_sibling(app->ui, parent);
     if(tree_node_is_null(next_sibling)){
         log_info("Parent node has no next visible sibling, cannot move to parent next sibling");
         return;
-    }
-    TreeNode target = ui_last_visible_child(app->ui, next_sibling);
-    if(tree_node_is_null(target)){
-        update_current_with_history(app, next_sibling);
-        log_info("Parent next sibling has no visible child, moved focus to parent next sibling");
     }else{
-        update_current_with_history(app, target);
+        TreeNode sibling_end = ui_last_visible_child(app->ui, next_sibling);
+        update_current_with_history(app, sibling_end);
         log_info("Moved focus to last visible child of parent next sibling");
     }
 }
@@ -1397,21 +1382,13 @@ static void handle_move_parent_prev_sibling_end(AppState *app) {
     log_debug("[handle_move_parent_prev_sibling_end] Moving focus to last visible child of parent previous sibling");
     TreeNode current = app->ui->current_node;
     TreeNode parent = tree_node_parent(app->tree_overlay, current);
-    if(tree_node_is_null(parent)){
-        log_info("Current node has no parent, cannot move to parent previous sibling");
-        return;
-    }
-    TreeNode prev_sibling = ui_previous_visible_sibling(app->ui, parent);
+    TreeNode prev_sibling = ui_parent_level_prev_visible_sibling(app->ui, parent);
     if(tree_node_is_null(prev_sibling)){
         log_info("Parent node has no previous visible sibling, cannot move to parent previous sibling");
         return;
-    }
-    TreeNode target = ui_last_visible_child(app->ui, prev_sibling);
-    if(tree_node_is_null(target)){
-        update_current_with_history(app, prev_sibling);
-        log_info("Parent previous sibling has no visible child, moved focus to parent previous sibling");
     }else{
-        update_current_with_history(app, target);
+        TreeNode sibling_end = ui_last_visible_child(app->ui, prev_sibling);
+        update_current_with_history(app, sibling_end);
         log_info("Moved focus to last visible child of parent previous sibling");
     }
 }
@@ -1420,22 +1397,14 @@ static void handle_move_parent_next_sibling_begin(AppState *app) {
     log_debug("[handle_move_parent_next_sibling_begin] Moving focus to first visible child of parent next sibling");
     TreeNode current = app->ui->current_node;
     TreeNode parent = tree_node_parent(app->tree_overlay, current);
-    if(tree_node_is_null(parent)){
-        log_info("Current node has no parent, cannot move to parent next sibling");
-        return;
-    }
-    TreeNode next_sibling = ui_next_visible_sibling(app->ui, parent);
+    TreeNode next_sibling = ui_parent_level_next_visible_sibling(app->ui, parent);
     if(tree_node_is_null(next_sibling)){
         log_info("Parent node has no next visible sibling, cannot move to parent next sibling");
         return;
-    }
-    TreeNode target = ui_first_visible_child(app->ui, next_sibling);
-    if(tree_node_is_null(target)){
-        update_current_with_history(app, next_sibling);
-        log_info("Parent next sibling has no visible child, moved focus to parent next sibling");
     }else{
-        update_current_with_history(app, target);
-        log_info("Moved focus to first visible child of parent next sibling");
+        TreeNode sibling_begin = ui_first_visible_child(app->ui, next_sibling);
+        update_current_with_history(app, sibling_begin);
+        log_info("Moved focus to first visible child of parent next sibling");  
     }
 }
 

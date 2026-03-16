@@ -170,10 +170,13 @@ TreeNode ui_dfs_prev(TreeOverlay *overlay, TreeNode n);
 
 void ui_render(UiContext *ctx);
 
+// visible nodes traversal (skip hidden nodes if global_enable_hide is true)
 TreeNode ui_first_visible_child(UiContext *ui, TreeNode n) ;
 TreeNode ui_next_visible_sibling(UiContext *ui, TreeNode n) ;
 TreeNode ui_previous_visible_sibling(UiContext *ui, TreeNode n) ;
 TreeNode ui_last_visible_child(UiContext *ui, TreeNode parent);
+TreeNode ui_parent_level_next_visible_sibling(UiContext *ui, TreeNode n);
+TreeNode ui_parent_level_prev_visible_sibling(UiContext *ui, TreeNode n);
 
 // layout and selection
 void ui_move_focus_down(UiContext *ui) ;
