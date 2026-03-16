@@ -312,12 +312,12 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
 
         if(is_current && ctx->show_ancestors_in_one_line){
             // show parent text in the same line if possible
-            uint64_t child_text_render_x = text_render_x;
+            int64_t child_text_render_x = text_render_x;
             TreeNode parent = tree_node_parent(ctx->overlay, n);
             while(!tree_node_is_null(parent)){
                 const char *parent_text = tree_node_text(parent);
                 int parent_text_w = display_width(parent);
-                uint64_t parent_render_x = child_text_render_x - link_width - parent_text_w;
+                int64_t parent_render_x = child_text_render_x - link_width - parent_text_w;
                 if(parent_render_x >= 0){
                     printf("\033[%d;%dH", text_render_y + 1, parent_render_x + 1);
                     printf("\033[3m"); // italic
