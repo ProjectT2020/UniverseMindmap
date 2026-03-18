@@ -123,7 +123,7 @@ TreeNode tree_node_prev_sibling(TreeOverlay *ov, TreeNode n);
 // traverser
 int tree_traverse(TreeOverlay *ov, TreeNode n, int (*visit)(TreeNode n, void *ctx), void *ctx) ;
 int tree_traverse_with_depth(TreeOverlay *ov, TreeNode n, int64_t depth, 
-        int (*visit)(TreeNode n, int64_t depth, void *ctx), void *ctx) ;
+        int (*visit)(TreeNode n, int64_t depth, void *ctx), void *ctx, bool exclude_hidden) ;
 TreeNode tree_node_dfs_next(TreeOverlay *ov, TreeNode n);
 TreeNode tree_node_dfs_prev(TreeOverlay *ov, TreeNode n);
 

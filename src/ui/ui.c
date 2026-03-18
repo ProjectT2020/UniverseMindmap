@@ -14,6 +14,7 @@
 #include "tty.h"
 #include "ui.h"
 #include "../utils/logging.h"
+#include "../operate/operate_type.h"
 #include "../layout/mindmap_layout.h"
 
 char next_char() {
@@ -416,6 +417,11 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
                     break;
                 case 'a':
                     input.type = UO_ASK_AI;
+                    input.param1 = QUERY_SCOPE_CURRENT_NODE;
+                    break;
+                case 'A':
+                    input.type = UO_ASK_AI;
+                    input.param1 = QUERY_SCOPE_SUBTREE;
                     break;
                 default:
                     log_debug("Unknown escape sequence: ESC [ %c\n", c1);

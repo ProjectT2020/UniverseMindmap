@@ -157,6 +157,10 @@ ConnectContext *connect_create_shell_above(const char *shell_command) {
     return ctx;
 }
 
+bool connect_is_connected(ConnectContext *ctx) {
+    return ctx && ctx->pipe_file_handle;
+}
+
 /**
  * tmux pipe-pane -I -t <pane_id> "cat /tmp/um_tmux_pipe.XXXXXX"
  */

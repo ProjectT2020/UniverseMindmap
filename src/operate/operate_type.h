@@ -1,0 +1,12 @@
+
+#ifndef OPERATE_TYPE_H
+#define OPERATE_TYPE_H
+
+enum query_scope {
+    QUERY_SCOPE_CURRENT_NODE = 0,
+    QUERY_SCOPE_SUBTREE = 1,
+    QUERY_SCOPE_WHOLE_TREE = 2
+};
+
+
+#endif // OPERATE_TYPE_H

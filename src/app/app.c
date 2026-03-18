@@ -18,6 +18,7 @@
 #include "../tree/tree_overlay.h"
 #include "../tree/tree_view.h"
 #include "../tree/tree_storage.h"
+#include "../utils/os_specific.h"
 
 #include "app.h"
 
@@ -26,6 +27,7 @@ static const char *APP_META_BOOKMARK_NAME = "bookmarks";
 static const char *CONTEXT_META_NAME = ".meta";
 static const char *CONTEXT_META_SHELL = "shell";
 static const char *CONTEXT_META_WIKI_PREFIX = "wiki_prefix"; // Metadata key for wiki URL prefix
+static const char *CONTEXT_META_ASK_AI_CMD = "ask_ai";
 static const char *CONTEXT_WIKI_TERM = "wiki"; // Parent node with text 'wiki' denotes its children as Wiki terms
 
 static TreeNode app_ensure_metadata_node(AppState *app) ;
@@ -1546,6 +1548,44 @@ static void handle_send_command(AppState *app){
     }
 }
 
+static void handle_ask_ai(AppState *app, UserOperation uo) {
+    if(!connect_is_connected(app->connect)){
+        log_info("handle_ask_ai: No active connection, cannot ask AI");
+        ui_info_set_message(app->ui, "No active connection, cannot ask AI");
+        return;
+    }
+    const char *ask_ai_cmd = "ollama run gpt-oss:120b-cloud";
+    TreeNode ask_ai_cmd_node = context_metadata_get(app, app->ui->current_node, CONTEXT_META_ASK_AI_CMD);
+    if(!tree_node_is_null(ask_ai_cmd_node)){
+        const char *custom_cmd = tree_node_text(ask_ai_cmd_node);
+        if(custom_cmd != NULL && strlen(custom_cmd) > 0){
+            ask_ai_cmd = custom_cmd;
+        }
+    }
+
+
+    switch(uo.param1){
+        case QUERY_SCOPE_CURRENT_NODE:
+        case QUERY_SCOPE_SUBTREE:
+            operate_ask_ai(app->operate, app->ui->current_node, uo.param1);
+            break;
+        default:
+            log_debug("[handle_ask_ai] Asking AI with unknown param %c, treating as continue", uo.param1);
+    }
+    const char *exe_path = os_get_executable_path();
+    char command[4096];
+    sprintf(command, "%s --output-mq | %s", exe_path, ask_ai_cmd);
+    int r = connect_send_command(app->connect, command);
+    if (r != 0) {
+        log_warn("handle_ask_ai: Failed to send ask AI command through connection");
+        ui_info_set_message(app->ui, "Failed to send ask AI command through connection");
+    }
+     else {
+        log_debug("handle_ask_ai: Sent ask AI command through connection: %s", command);
+        ui_info_set_message(app->ui, "Sent ask AI command through connection: %s", command);
+    }
+}
+
 static void handle_shell_above(AppState *app) {
     log_debug("[handle_shell_above] Executing shell above");
     TreeNode shell = context_metadata_get(app, app->ui->current_node, CONTEXT_META_SHELL);
@@ -2243,7 +2283,7 @@ void app_apply_event(AppState *app, UserOperation uo) {
         break;
 
     case UO_ASK_AI:
-        log_debug("AI assistant operation - to be implemented");
+        handle_ask_ai(app, uo);
         break;
     case UO_HIT_CTRL_J:{
         bool zoomed;

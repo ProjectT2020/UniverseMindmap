@@ -5,6 +5,7 @@ CFLAGS  := -g3 -O0 -Wall -Wextra -std=c11 -D_XOPEN_SOURCE=700 -I src -MMD -MP \
 # Core library sources
 CORE_SRCS := \
 	src/utils/logging.c \
+	src/utils/os_specific.c \
 	src/utils/list.c \
 	src/utils/stack.c \
 	src/utils/queue.c \

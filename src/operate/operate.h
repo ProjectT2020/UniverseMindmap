@@ -3,6 +3,7 @@
 #define OPERATE_H
 
 #pragma once
+#include "operate_type.h"
 #include "../utils/stack.h"
 #include "../event/event.h"
 #include "ui/ui.h"
@@ -55,5 +56,9 @@ int operate_edit_node(Operate *operate, TreeNode node);
 int operate_reduce_folding(Operate *operate, TreeNode current, int fold_level);
 int operate_fold_more(Operate *operate, TreeNode current, int fold_level);
 int operate_fold_node(Operate *operate, TreeNode node);
+
+// external
+int operate_ask_ai(Operate *operate, TreeNode node, enum query_scope scope);
+int operate_output_ai_message();
 
 #endif // OPERATE_H

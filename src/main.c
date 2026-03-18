@@ -9,6 +9,7 @@
 #include "wal/wal.h"
 #include "ui/ui.h"
 #include "utils/logging.h"
+#include "operate/operate.h"
 #include "app/app.h"
 
 void usage(const char *prog_name) {
@@ -28,6 +29,7 @@ int main(int argc, char *argv[]) {
     int disable_wal_option = 0;
     
     static struct option long_options[] = {
+        {"output-mq", no_argument, 0, 'o'},
         {"debug", no_argument, 0, 'd'},
         {"disable-wal", no_argument, 0, 'w'},
         {"help", no_argument, 0, 'h'},
@@ -35,8 +37,11 @@ int main(int argc, char *argv[]) {
     };
     
     int opt;
-    while ((opt = getopt_long(argc, argv, "dwh", long_options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "odwh", long_options, NULL)) != -1) {
         switch (opt) {
+            case 'o':
+                operate_output_ai_message();
+                return 0;
             case 'd':
                 debug_mode = 1;
                 break;

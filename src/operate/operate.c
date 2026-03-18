@@ -1,5 +1,7 @@
-
+#include <sys/ipc.h>
+#include <sys/msg.h>
 #include <unistd.h> // close()
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
@@ -14,6 +16,7 @@
 #include "../utils/logging.h"
 #include "../utils/stack.h"
 #include "../utils/queue.h"
+#include "../utils/os_specific.h"
 
 #include "operate.h"
 
@@ -378,7 +381,7 @@ int operate_export_mindmap_to_txt(Operate *operate, const char *filepath){
         .file = file
     };
     TreeNode root = operate->ui->current_node;
-    tree_traverse_with_depth(operate->overlay, root, 0, export_visitor, &e_ctx);
+    tree_traverse_with_depth(operate->overlay, root, 0, export_visitor, &e_ctx, false);
 
     fclose(file);
     log_debug("operate_export_mindmap_to_txt: Successfully exported mindmap to %s", filepath);
@@ -394,7 +397,7 @@ int operate_export_mindmap_to_clipboard_txt(Operate *operate, TreeNode current_n
         log_error("operate_export_mindmap_to_clipboard_txt: Failed to open memory stream for clipboard export");
         return -1;
     }
-    tree_traverse_with_depth(operate->overlay, current_node, 0, export_visitor, &e_ctx);
+    tree_traverse_with_depth(operate->overlay, current_node, 0, export_visitor, &e_ctx, false);
     pclose(e_ctx.file);
     
     #else
@@ -674,5 +677,111 @@ int operate_fold_more(Operate *operate, TreeNode current, int fold_level){
 
     }
     queue_destroy(queue);
+    return 0;
+}
+
+
+static key_t operate_get_ai_message_queue_key() {
+    const char *exe_path = os_get_executable_path();
+    if (!exe_path) {
+        log_info("operate_get_ai_message_queue_key: Failed to read exe path");
+        return -1;
+    }
+
+    key_t key = ftok(exe_path, 'A');
+    if (key == -1) {
+        log_info("operate_get_ai_message_queue_key: Failed to generate key for message queue");
+        return -1;
+    }
+    return key;
+}
+
+struct msgbuf {
+    long mtype;
+    char mtext[4096];
+};
+
+int operate_ask_ai(Operate *operate, TreeNode node, enum query_scope scope){
+    key_t key = operate_get_ai_message_queue_key();
+    if (key == -1) {
+        return 1;
+    }
+    int msgid = msgget(key, 0666 | IPC_CREAT);
+    if (msgid == -1) {
+        log_info("operate_ask_ai: Failed to create message queue for AI assistant");
+        return 1;
+    }
+    // clear message queue before sending new message
+    msgctl(msgid, IPC_RMID, NULL);
+    msgid = msgget(key, 0666 | IPC_CREAT);
+    if (msgid == -1) {
+        log_info("operate_ask_ai: Failed to create message queue for AI assistant");
+        return 1;
+    }
+
+    struct msgbuf message;
+    message.mtype = 1;
+    switch(scope){
+        case QUERY_SCOPE_CURRENT_NODE:
+            const char *node_text = tree_node_text(node);
+            snprintf(message.mtext, sizeof(message.mtext), "%s", node_text);
+            break;
+        case QUERY_SCOPE_SUBTREE: {
+            char *mem = NULL;
+            size_t len = 0;
+            FILE *f = open_memstream(&mem, &len);
+            ExportContext e_ctx = {
+                .file = f
+            };
+            TreeNode root = operate->ui->current_node;
+            tree_traverse_with_depth(operate->overlay, root, 0, export_visitor, &e_ctx, true);
+            fclose(f);
+            snprintf(message.mtext, sizeof(message.mtext), "%s", mem);
+            free(mem);
+            break;
+        }
+        case QUERY_SCOPE_WHOLE_TREE:
+            log_debug("operate_ask_ai: Sending whole tree to AI assistant - to be implemented");
+            break;
+        default:
+            log_info("operate_ask_ai: Invalid query scope");
+            return 1;
+    }
+
+    message.mtext[sizeof(message.mtext) - 1] = '\0'; // Ensure null-termination
+    size_t msg_len = strlen(message.mtext);
+    if (msgsnd(msgid, &message, msg_len, 0) == -1) {
+        log_info("operate_ask_ai: Failed to send message to AI assistant");
+        return 1;
+    }
+
+    log_debug("operate_ask_ai: Successfully sent message to AI assistant");
+
+    return 0;
+}
+
+int operate_output_ai_message() {
+    key_t key = operate_get_ai_message_queue_key();
+    if (key == -1) {
+        return 1;
+    }
+
+    int msgid = msgget(key, 0666 | IPC_CREAT);
+    if (msgid == -1) {
+        log_info("operate_output_ai_message: Failed to access message queue for AI assistant");
+        return 1;
+    }
+
+    struct msgbuf message;
+    ssize_t len = msgrcv(msgid, &message, sizeof(message.mtext), 0, IPC_NOWAIT);
+    if (len == -1) {
+        log_info("operate_output_ai_message: No message received from AI assistant");
+        return 1;
+    }
+    message.mtext[len] = '\0'; // Null-terminate the received message
+    message.mtext[sizeof(message.mtext) - 1] = '\0'; // Ensure null-termination
+
+    printf("%s", message.mtext);
+
     return 0;
 }

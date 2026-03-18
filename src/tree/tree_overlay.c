@@ -865,8 +865,11 @@ int tree_traverse(TreeOverlay *ov, TreeNode n, int (*visit)(TreeNode n, void *ct
 }
 
 int tree_traverse_with_depth(TreeOverlay *ov, TreeNode n, int64_t depth, 
-        int (*visit)(TreeNode n, int64_t depth, void *ctx), void *ctx) {
+        int (*visit)(TreeNode n, int64_t depth, void *ctx), void *ctx, bool exclude_hidden) {
     if (tree_node_is_null(n)) {
+        return 0;
+    }
+    if(exclude_hidden && strcmp(tree_node_text(n), ".meta") == 0){
         return 0;
     }
 
@@ -877,7 +880,7 @@ int tree_traverse_with_depth(TreeOverlay *ov, TreeNode n, int64_t depth,
 
     TreeNode child = tree_node_first_child(ov, n);
     while (!tree_node_is_null(child)) {
-        res = tree_traverse_with_depth(ov, child, depth + 1, visit, ctx);
+        res = tree_traverse_with_depth(ov, child, depth + 1, visit, ctx, exclude_hidden);
         if(res != 0){
             return res;
         }
