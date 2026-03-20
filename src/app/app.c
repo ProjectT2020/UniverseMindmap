@@ -1180,7 +1180,7 @@ static void handle_join_text_without_space(AppState *app) {
         return;
     }
     app->ui->current_node = 
-        tree_find_by_id(app->tree_overlay, edit_event->new_node_id);
+        tree_find_by_id(app->tree_overlay, edit_event->node_id);
 
     // delete next sibling (move to recycle bin)
     TreeNode old_parent = tree_node_parent(app->tree_overlay, next_sibling);
