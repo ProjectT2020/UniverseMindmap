@@ -39,7 +39,7 @@ APP_OBJS := $(APP_SRCS:.c=.o)
 
 TARGET := bin/universe-mindmap
 
-.PHONY: all clean run help install
+.PHONY: all clean run help install uninstall loc
 
 all: $(TARGET)
 
@@ -62,6 +62,10 @@ install: $(TARGET)
 uninstall:
 	rm -f /usr/local/bin/universe-mindmap
 	rm -f /usr/local/bin/umm
+
+loc:
+	@echo "Counting lines of C code in src/ and tests/ ..."
+	@find src tests -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 wc -l
 	
 clean:
 	rm -f $(CORE_OBJS) $(APP_OBJS) $(TARGET)
@@ -77,3 +81,4 @@ help:
 	@echo "  make help     Show this help"
 	@echo "  make install  Install the application"
 	@echo "  make uninstall Uninstall the application"
+	@echo "  make loc      Count lines of code in C source/header files"
