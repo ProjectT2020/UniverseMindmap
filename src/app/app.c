@@ -520,6 +520,11 @@ void handle_edit_node(AppState *app){
         log_warn("handle_edit_node: Failed to commit update text event");
     }
     free(name);
+
+    if(terminated_character == '\t'){
+        // if terminated by tab, immediately add a child node and edit it
+        handle_add_child_to_tail(app);
+    }
 }
 
 void handle_mark_as_definition(AppState *app) {
@@ -527,7 +532,7 @@ void handle_mark_as_definition(AppState *app) {
     TreeNode current = ui->current_node;
     const char *old_name = tree_node_text(current);
 
-    char *new_name = calloc(strlen(old_name) + 2, sizeof(char));
+    char *new_name = calloc(strlen(old_name) + 2 + 1, sizeof(char)); // +1 NULL terminated
     sprintf(new_name, "[%s]", old_name);
     
     Event *event = event_create_update_text(
@@ -1676,6 +1681,7 @@ static void handle_command_mode(AppState *app) {
         case CMD_EDIT_NODE:{
             log_debug("handle_command_mode: Editing current node");
             operate_edit_node(app->operate, app->ui->current_node);
+            app->ui->current_node = tree_find_by_id(app->tree_overlay, tree_node_id(app->ui->current_node));
             break;
         }
         case CMD_RESET_LAYOUT:{
