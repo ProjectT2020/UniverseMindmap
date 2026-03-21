@@ -30,6 +30,7 @@ static const char *CONTEXT_META_SHELL = "shell";
 static const char *CONTEXT_META_WIKI_PREFIX = "wiki_prefix"; // Metadata key for wiki URL prefix
 static const char *CONTEXT_META_CODE_PROJECT_ROOT = "project_root"; // Metadata key for code project root path
 static const char *CONTEXT_META_ASK_AI_CMD = "ask_ai";
+static const char *CONTEXT_META_PAGE = "page"; // page URL
 static const char *CONTEXT_WIKI_TERM = "wiki"; // Parent node with text 'wiki' denotes its children as Wiki terms
 static const char *CONTEXT_CODE_RESOURCE = "code"; // Parent node with text 'code' denotes its children as source code
 
@@ -1974,6 +1975,33 @@ static void handle_open_resource_link(AppState *app){
             log_error("handle_open_resource_link: Failed to spawn process to open code resource link in code editor");
             return;
         }
+    }else if(URL[0] == '#'){
+        TreeNode page_node = context_metadata_get(app, current, CONTEXT_META_PAGE);
+        if(tree_node_is_null(page_node)){
+            log_warn("Current node is a page anchor but no page metadata found, cannot open resource link");
+            ui_info_set_message(app->ui, "Current node is a page anchor but no page metadata found, cannot open resource link");
+            return;
+        }
+        const char *page = tree_node_text(page_node);
+        const char *anchor = URL + 1;
+        static char url[2048];
+        snprintf(url, sizeof(url), "%s#%s", page, anchor);
+        log_debug("[handle_open_resource_link] Detected page anchor link, opening URL: %s", url);
+        char *argv[] = {
+            "open",
+            "-a",
+            "Firefox",
+            "--",
+            (char *)url,
+            NULL
+        };
+        spawn_argv = argv;
+        int r = posix_spawnp(&pid, "open", NULL, NULL, spawn_argv, NULL);
+        if (r != 0) {
+            log_error("handle_open_resource_link: Failed to spawn process to open page anchor link");
+            return;
+        }
+
     }else if(!tree_node_is_null(parent)){
         if(strcmp(parent_text, CONTEXT_WIKI_TERM) == 0){
             const char *term = tree_node_text(current);
