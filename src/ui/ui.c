@@ -245,6 +245,8 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
             char next = next_char();
             if (next == 'p') {
                 input.type = UO_PASTE_AS_CHILD;
+            } else if (next == 'c') {
+                input.type = UO_MOVE_FOCUS_CURRENT_TASK;
             } else if (next == 'j') {
                 input.type = UO_MOVE_FOCUS_DOWN;
             } else if (next == 'k') {
@@ -279,6 +281,37 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
             }
             break;
         }
+        case '\\':{
+            char next1 = next_char();
+            if(('0' <= next1 && next1 <= '9') || ('a' <= next1 && next1 <= 'z') || ('A' <= next1 && next1 <= 'Z')){
+                char next2 = next_char();
+                if(('0' <= next2 && next2 <= '9') || ('a' <= next2 && next2 <= 'z') || ('A' <= next2 && next2 <= 'Z')){
+                    char two_char_command[3] = {next1, next2, '\0'};
+                    // new task
+                    if(strcmp("nt", two_char_command) == 0){ 
+                        // input.type = UO_NEW_TASK; // todo; we've already have :new task
+                    } 
+                    // current task
+                    // we have gc for curent task
+                    // create child task
+                    else if(strcmp("ct", two_char_command) == 0){
+                        input.type = UO_CREATE_CHILD_TASK;
+                    }
+                    // create sibling task
+                    else if(strcmp("st", two_char_command) == 0){
+                        input.type = UO_CREATE_SIBLING_TASK;
+                    }
+                    // finish task
+                    else if(strcmp("ft", two_char_command) == 0){ 
+                         input.type = UO_FINISH_TASK;
+                    } 
+                    else {
+                        log_info("Unknown two-character command: \\%s\n", two_char_command);
+                    }
+                }
+            }
+            break;
+        }
         case '{':
             input.type = UO_MOVE_PARENT_PREV_SIBLING_BEGIN;
             break;
@@ -297,6 +330,9 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
                 case ']':
                     input.type = UO_MOVE_PARENT_PREV_SIBLING_END;
                     break;
+                case 't':
+                    input.type = UO_PREV_TASK;
+                    break;
                 default:
                     log_info("Unknown input sequence: [%c\n", next);
                     break;
@@ -314,6 +350,9 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
                     break;
                 case '[':
                     input.type = UO_MOVE_PARENT_NEXT_SIBLING_BEGIN;
+                    break;
+                case 't':
+                    input.type = UO_NEXT_TASK;
                     break;
                 default:
                     log_info("Unknown input sequence: ]%c\n", next);

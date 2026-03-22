@@ -25,6 +25,8 @@
 
 static const char *RECYCLE_BIN_NAME = "recycle_bin";
 static const char *APP_META_BOOKMARK_NAME = "bookmarks";
+static const char *APP_META_CURRENT_TASK = "current_task";
+static const char *APP_META_MULTI_TASKING = "multi_tasking";
 static const char *CONTEXT_META_NAME = ".meta";
 static const char *CONTEXT_META_SHELL = "shell";
 static const char *CONTEXT_META_WIKI_PREFIX = "wiki_prefix"; // Metadata key for wiki URL prefix
@@ -33,6 +35,7 @@ static const char *CONTEXT_META_ASK_AI_CMD = "ask_ai";
 static const char *CONTEXT_META_PAGE = "page"; // page URL
 static const char *CONTEXT_WIKI_TERM = "wiki"; // Parent node with text 'wiki' denotes its children as Wiki terms
 static const char *CONTEXT_CODE_RESOURCE = "code"; // Parent node with text 'code' denotes its children as source code
+static const char *APP_TASK_STACK_NAME = "[Task Stack]"; // A special node to hold task list
 
 static TreeNode app_ensure_metadata_node(AppState *app) ;
 static void update_current_with_history(AppState *app, TreeNode new_position) ;
@@ -215,6 +218,13 @@ static TreeNode context_metadata_get(AppState *app, TreeNode context, const char
 
 look_up_parent:
     return context_metadata_get(app, tree_node_parent(app->tree_overlay, context), key);
+}
+
+static TreeNode ensure_node_metadata(AppState *app, TreeNode node);
+
+static TreeNode node_metadata_ensure_key(AppState *app, TreeNode node, const char *key){
+    TreeNode meta_node = ensure_node_metadata(app, node);
+    return app_metadata_dict_keynode(app,  meta_node, key);
 }
 
 static TreeNode node_metadata_get(AppState *app, TreeNode node, const char *key){
@@ -445,12 +455,22 @@ void app_run(AppState *app) {
     app_run_interactive(app);
 }
 
+bool app_is_current_task(AppState *app, TreeNode node) {
+    TreeNode current_task_node = app_metadata_value_node(app, APP_META_CURRENT_TASK);
+    if(tree_node_is_null(current_task_node)){
+        return false;
+    }
+    uint64_t current_task_id = strtoull(tree_node_text(current_task_node), NULL, 10);
+    return current_task_id == tree_node_id(node);
+}
 
 static void handle_add_child_node(AppState *app) {
     UiContext *ui = app->ui;
     TreeNode current = ui->current_node;
     log_debug("[handle_add_child] Before add: current_node id=%lu, kind=%d", 
               tree_node_id(current), current.kind);
+
+    bool is_current_task = app_is_current_task(app, current);
 
     Event *event = event_create_add_first_child(
         app->tree_overlay->last_applied_lsn + 1,
@@ -459,9 +479,41 @@ static void handle_add_child_node(AppState *app) {
     );
     operate_commit_event(app->operate, event);
     ui->current_node = tree_find_by_id(app->tree_overlay, event->new_node_id);
+    event_destroy(event);
     ui_render(app->ui);// render to get text position
     
     handle_edit_node(app);
+    
+    if(is_current_task){
+        // update current task
+        uint64_t current_task_node_id = tree_node_id(ui->current_node);
+        TreeNode context_current_task_value = context_metadata_get(app, current, APP_META_CURRENT_TASK);
+        static char current_task_id_str[32];
+        sprintf(current_task_id_str, "%llu", current_task_node_id);
+        event = event_create_update_text(
+            app->tree_overlay->last_applied_lsn + 1,
+            tree_node_id(context_current_task_value),
+            current_task_id_str
+        );
+        int r = operate_commit_event(app->operate, event);
+        if(r != 0){
+            log_error("Failed to update current task metadata");
+            return;
+        }
+        event_destroy(event);
+        TreeNode app_current_task_value_node = app_metadata_value_node(app, APP_META_CURRENT_TASK); 
+        event = event_create_update_text(
+            app->tree_overlay->last_applied_lsn + 1,
+            tree_node_id(app_current_task_value_node),
+            current_task_id_str
+        );
+        int r2 = operate_commit_event(app->operate, event);
+        if(r2 != 0){
+            log_error("Failed to update app current task metadata");
+            return;
+        }
+        event_destroy(event);
+    }
 }
 
 
@@ -473,6 +525,8 @@ void handle_add_child_to_tail(AppState *app) {
     log_debug("[handle_add_child_to_tail] Before add: current_node id=%lu, kind=%d", 
               tree_node_id(current), current.kind);
 
+    bool is_current_task = app_is_current_task(app, current);
+
     Event *event = event_create_add_last_child(
         app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current),
@@ -480,9 +534,42 @@ void handle_add_child_to_tail(AppState *app) {
     );
     operate_commit_event(app->operate, event);
     ui->current_node = tree_find_by_id(app->tree_overlay, event->new_node_id);
+    
+    event_destroy(event);
     ui_render(app->ui);// render to get text position
 
     handle_edit_node(app);
+
+    if(is_current_task){
+        // update current task
+        uint64_t current_task_node_id = tree_node_id(ui->current_node);
+        TreeNode context_current_task_value = app_metadata_value_node(app,  APP_META_CURRENT_TASK);
+        static char current_task_id_str[32];
+        sprintf(current_task_id_str, "%llu", current_task_node_id);
+        event = event_create_update_text(
+            app->tree_overlay->last_applied_lsn + 1,
+            tree_node_id(context_current_task_value),
+            current_task_id_str
+        );
+        int r = operate_commit_event(app->operate, event);
+        if(r != 0){
+            log_error("Failed to update current task metadata");
+            return;
+        }
+        event_destroy(event);
+        TreeNode app_current_task_value_node = app_metadata_value_node(app, APP_META_CURRENT_TASK); 
+        event = event_create_update_text(
+            app->tree_overlay->last_applied_lsn + 1,
+            tree_node_id(app_current_task_value_node),
+            current_task_id_str
+        );
+        int r2 = operate_commit_event(app->operate, event);
+        if(r2 != 0){
+            log_error("Failed to update app current task metadata");
+            return;
+        }
+        event_destroy(event);
+    }
 }
 
 static void handle_add_sibling_above(AppState *app) {
@@ -1454,6 +1541,24 @@ static void handle_move_focus_home(AppState *app) {
     
 }
 
+static void handle_move_focus_current_task(AppState *app) {
+    TreeNode current_task_node = app_metadata_value_node(app, APP_META_CURRENT_TASK );
+    if(tree_node_is_null(current_task_node)){
+        log_info("No current task set, cannot move focus to current task");
+        ui_info_set_message(app->ui, "No current task set");
+        return;
+    }
+    uint64_t node_id = strtoull(tree_node_text(current_task_node), NULL, 10);
+    TreeNode node = tree_find_by_id(app->tree_overlay, node_id);
+    if(tree_node_is_null(node)){
+        log_warn("Current task node id=%lu not found", node_id);
+        ui_info_set_message(app->ui, "Current task node not found");
+        return;
+    }
+    update_current_with_history(app, node);
+    log_debug("[handle_move_focus_current_task] Moved focus to current task node id=%lu", tree_node_id(app->ui->current_node));
+}
+
 static void handle_jump_back(AppState *app) {
     log_debug("[handle_jump_back] Jumping back in history");
     if(stack_is_empty(app->jump_back_stack)){
@@ -1573,6 +1678,172 @@ static void handle_send_command(AppState *app){
     }
 }
 
+static void handle_create_child_task(AppState *app) {
+    handle_move_focus_current_task(app);
+    handle_add_child_to_tail(app);
+}
+
+static void handle_create_sibling_task(AppState *app) {
+    handle_move_focus_current_task(app);
+    handle_add_sibling_below(app);
+}
+
+static TreeNode task_find_current(AppState *app, TreeNode parent);
+static void handle_finish_task(AppState *app){
+    handle_move_focus_current_task(app);
+    TreeNode current = app->ui->current_node;
+    const char *task_name = tree_node_text(current);
+    if(strcmp( APP_TASK_STACK_NAME, task_name) == 0){
+        log_info("This is the root task, Enjoy your life!");
+        ui_info_set_message(app->ui, "This is the root task, Enjoy your life!");
+        return;
+    }
+    TreeNode next_current = tree_node_next_sibling(app->tree_overlay, current);
+    if(tree_node_is_null(next_current)){
+        next_current = tree_node_prev_sibling(app->tree_overlay, current);
+        if(tree_node_is_null(next_current)  || strcmp(tree_node_text(next_current), CONTEXT_META_NAME) == 0){
+            next_current = tree_node_parent(app->tree_overlay, current);
+        }
+    }
+    next_current = task_find_current(app, next_current);
+    
+    if(tree_node_is_null(next_current)){
+        log_error("Failed to find next current after finishing task, this should not happen");
+        ui_info_set_message(app->ui, "Failed to find next current after finishing task, this should not happen");
+        return;
+    }
+    TreeNode parent = tree_node_parent(app->tree_overlay, current);
+    TreeNode finished_tasks = node_metadata_ensure_key(app, parent, "finished_tasks");
+    Event *event = event_create_move_subtree(
+        app->tree_overlay->last_applied_lsn + 1,
+        tree_node_id(current),
+        tree_node_id(parent),
+        tree_node_id(tree_node_next_sibling(app->tree_overlay, current)),
+        tree_node_id(finished_tasks),
+        tree_node_id(tree_node_first_child(app->tree_overlay, finished_tasks))
+    );
+    int r = operate_commit_event(app->operate, event);
+    if(r != 0){
+        log_warn("Failed to move finished task to finished_tasks");
+        return;
+    }
+
+    app->ui->current_node = next_current;
+    TreeNode current_task_value = app_metadata_value_node(app, APP_META_CURRENT_TASK);
+    static char current_task_id_str[32];
+    sprintf(current_task_id_str, "%llu", tree_node_id(next_current));
+    event = event_create_update_text(
+        app->tree_overlay->last_applied_lsn + 1,
+        tree_node_id(current_task_value),
+        current_task_id_str
+    );
+    r = operate_commit_event(app->operate, event);
+    if(r != 0){
+        log_warn("Failed to update current task after finishing task");
+    }
+
+    log_info("Finished task '%s'", task_name);
+    ui_info_set_message(app->ui, "Finished task '%s'", task_name);
+
+}
+
+static TreeNode task_find_current(AppState *app, TreeNode parent){
+    if(tree_node_is_null(parent)){
+        log_error("task_find_current: parent node is null");
+        return parent;
+    }
+    TreeNode child = tree_node_first_child(app->tree_overlay, parent);
+    if(tree_node_is_null(child)){
+        return parent;
+    }else{
+        if(strcmp(tree_node_text(child), CONTEXT_META_NAME) == 0){
+            child = tree_node_next_sibling(app->tree_overlay, child);
+            if(tree_node_is_null(child)){
+                return parent;
+            }
+        }
+    }
+    return task_find_current(app, child);
+}
+
+static TreeNode task_find_next(AppState *app, TreeNode task_node) {
+    TreeNode parent = tree_node_parent(app->tree_overlay, task_node);
+    TreeNode sibling = tree_node_next_sibling(app->tree_overlay, task_node);
+    if(tree_node_is_null(sibling)){
+        if(strcmp(tree_node_text(parent), APP_TASK_STACK_NAME) == 0){
+            sibling = tree_node_first_child(app->tree_overlay, parent);
+            if(strcmp(tree_node_text(sibling), CONTEXT_META_NAME) == 0){
+                sibling = tree_node_next_sibling(app->tree_overlay, sibling);
+            }
+        }else{
+            sibling = task_find_next(app, parent);
+        }
+    }
+    return task_find_current(app, sibling);
+}
+
+static void handle_next_task(AppState *app) {
+    TreeNode sibling = task_find_next(app, app->ui->current_node);    
+    update_current_with_history(app, sibling);
+    TreeNode current_task_value = app_metadata_value_node(app, APP_META_CURRENT_TASK);
+    static char current_task_id_str[32];
+    sprintf(current_task_id_str, "%llu", tree_node_id(sibling));
+    Event *event = event_create_update_text(
+        app->tree_overlay->last_applied_lsn + 1,
+        tree_node_id(current_task_value),
+        current_task_id_str
+    );
+    int r = operate_commit_event(app->operate, event);
+    if(r != 0){
+        log_warn("Failed to update current task after finishing task");
+    }
+    event_destroy(event);
+    log_info("Moved to next task '%s'", tree_node_text(sibling));
+    ui_info_set_message(app->ui, "Moved to next task '%s'", tree_node_text(sibling));
+}
+
+static TreeNode task_find_prev(AppState *app, TreeNode task_node) {
+    if(strcmp(tree_node_text(task_node), APP_TASK_STACK_NAME) == 0){
+        return task_find_current(app, task_node);
+    }
+    TreeNode parent = tree_node_parent(app->tree_overlay, task_node);
+    TreeNode sibling = tree_node_prev_sibling(app->tree_overlay, task_node);
+    if(tree_node_is_null(sibling) || strcmp(tree_node_text(sibling), CONTEXT_META_NAME) == 0){
+        TreeNode child = tree_node_last_child(app->tree_overlay, parent);
+        if(tree_node_id(child) == tree_node_id(task_node)){
+            return task_find_prev(app, parent);
+        }
+        sibling = child;
+    }
+
+    return task_find_current(app, sibling);
+}
+
+static void handle_prev_task(AppState *app) {
+    TreeNode prev_task = task_find_prev(app, app->ui->current_node);
+    if(tree_node_id(prev_task) == tree_node_id(app->ui->current_node)){
+        log_info("No previous task found");
+        ui_info_set_message(app->ui, "No previous task found");
+        return;
+    }
+    update_current_with_history(app, prev_task);
+    TreeNode current_task_value = app_metadata_value_node(app, APP_META_CURRENT_TASK);
+    static char current_task_id_str[32];
+    sprintf(current_task_id_str, "%llu", tree_node_id(prev_task));
+    Event *event = event_create_update_text(
+        app->tree_overlay->last_applied_lsn + 1,
+        tree_node_id(current_task_value),
+        current_task_id_str
+    );
+    int r = operate_commit_event(app->operate, event);
+    if(r != 0){
+        log_warn("Failed to update current task after moving to previous task");
+    }
+    event_destroy(event);
+    log_info("Moved to previous task '%s'", tree_node_text(prev_task));
+    ui_info_set_message(app->ui, "Moved to previous task '%s'", tree_node_text(prev_task));
+}
+
 static void handle_ask_ai(AppState *app, UserOperation uo) {
     if(!connect_is_connected(app->connect)){
         log_info("handle_ask_ai: No active connection, cannot ask AI");
@@ -1622,6 +1893,70 @@ static void handle_shell_above(AppState *app) {
         log_warn("[handle_shell_above]: Failed to create shell above connection");
     }             
     ui_info_set_message(app->ui, "Connected to shell above, pane=%s", app->connect->pane_id);
+}
+
+TreeNode app_ensure_task_stack(AppState *app) {
+    TreeNode root = app->tree_overlay->root;
+    TreeNode task_stack = tree_node_first_child(app->tree_overlay, root);
+    while(!tree_node_is_null(task_stack)){
+        if(strcmp(tree_node_text(task_stack), APP_TASK_STACK_NAME) == 0){
+            return task_stack;
+        }
+        task_stack = tree_node_next_sibling(app->tree_overlay, task_stack);
+    }
+    TreeNode first_child = tree_node_first_child(app->tree_overlay, root);
+    Event *event = event_create_add_sibling(
+        app->tree_overlay->last_applied_lsn + 1,
+        tree_node_id(first_child),
+        APP_TASK_STACK_NAME
+    );
+    int r = operate_commit_event(app->operate, event);
+    if(r != 0){
+        log_warn("app_ensure_task_stack: Failed to create task stack node");
+        return (TreeNode){.kind = TREE_NODE_NULL};
+    }
+    return tree_find_by_id(app->tree_overlay, event->new_node_id);
+}
+
+void handle_add_new_task(AppState *app) {
+    TreeNode task_stack = app_ensure_task_stack(app);
+    if(tree_node_is_null(task_stack)){
+        log_error("handle_add_new_task: Failed to ensure task stack");
+        return;
+    }
+    Event *event = event_create_add_first_child(
+        app->tree_overlay->last_applied_lsn + 1,
+        tree_node_id(task_stack),
+        "New Task"
+    );
+    int r = operate_commit_event(app->operate, event);
+    if(r != 0){
+        log_warn("handle_add_new_task: Failed to add new task node");
+        return;
+    }
+    static char current_task_id_str[32];
+    sprintf(current_task_id_str, "%llu", event->new_node_id);
+    TreeNode current = tree_find_by_id(app->tree_overlay, event->new_node_id);
+    event_destroy(event);
+    update_current_with_history(app, current);
+    ui_render(app->ui);
+
+    TreeNode current_task_value = app_metadata_value_node(app, APP_META_CURRENT_TASK);
+    event = event_create_update_text(
+        app->tree_overlay->last_applied_lsn + 1,
+        tree_node_id(current_task_value),
+        current_task_id_str
+    );
+    r = operate_commit_event(app->operate, event);
+    if(r != 0){
+        log_warn("handle_add_new_task: Failed to update current task text");
+    }
+
+    handle_edit_node(app);
+
+    node_metadata_set(app, current, APP_META_CURRENT_TASK, current_task_id_str);
+
+    log_info("Added new task with node id=%s", current_task_id_str);
 }
 
 static void handle_command_mode(AppState *app) {
@@ -1727,6 +2062,10 @@ static void handle_command_mode(AppState *app) {
             log_debug("handle_command_mode: Editing current node");
             operate_edit_node(app->operate, app->ui->current_node);
             app->ui->current_node = tree_find_by_id(app->tree_overlay, tree_node_id(app->ui->current_node));
+            break;
+        }
+        case CMD_NEW_TASK:{
+            handle_add_new_task(app);
             break;
         }
         case CMD_RESET_LAYOUT:{
@@ -2323,6 +2662,9 @@ void app_apply_event(AppState *app, UserOperation uo) {
     case UO_MOVE_FOCUS_HOME:
         handle_move_focus_home(app);
         break;
+    case UO_MOVE_FOCUS_CURRENT_TASK:
+        handle_move_focus_current_task(app);
+        break;
     case UO_MARK_NODE:
         handle_mark_node(app, uo);
         break;
@@ -2394,6 +2736,24 @@ void app_apply_event(AppState *app, UserOperation uo) {
         handle_jump_keyword_definition(app);
         break;
 
+    // task
+    case UO_CREATE_CHILD_TASK:
+        handle_create_child_task(app);
+        break;
+    case UO_CREATE_SIBLING_TASK:
+        handle_create_sibling_task(app);
+        break;
+    case UO_FINISH_TASK:
+        handle_finish_task(app);
+        break;
+    case UO_NEXT_TASK:
+        handle_next_task(app);
+        break;
+    case UO_PREV_TASK:
+        handle_prev_task(app);
+        break;
+
+    // external resources
     case UO_ASK_AI:
         handle_ask_ai(app, uo);
         break;

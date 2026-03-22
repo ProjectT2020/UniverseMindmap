@@ -42,6 +42,7 @@ static const CmdMapping cmd_mapping[] = {
     {"delete", CMD_DELETE_NODE},
     {"fold", CMD_FOLD_NODE},
     {"unfold", CMD_UNFOLD_NODE},
+    {"new task", CMD_NEW_TASK},
     // Add more command mappings as needed
 
     // debug

@@ -19,6 +19,7 @@ typedef struct {
         UO_MOVE_FOCUS_LAST_CHILD,
         UO_MOVE_FOCUS_TOP,
         UO_MOVE_FOCUS_HOME,
+        UO_MOVE_FOCUS_CURRENT_TASK,
         UO_MOVE_TO_CHILD_POSITION, // move focus to child at position (param1)
         UO_MOVE_FOLD_BEGIN,
         UO_MOVE_FOLD_END,
@@ -26,6 +27,13 @@ typedef struct {
         UO_MOVE_PARENT_PREV_SIBLING_END,
         UO_MOVE_PARENT_NEXT_SIBLING_BEGIN,
         UO_MOVE_PARENT_NEXT_SIBLING_END,
+
+        // task
+        UO_CREATE_CHILD_TASK,
+        UO_CREATE_SIBLING_TASK,
+        UO_FINISH_TASK,
+        UO_NEXT_TASK,
+        UO_PREV_TASK,
 
         // modification
         UO_ADD_CHILD_NODE,
