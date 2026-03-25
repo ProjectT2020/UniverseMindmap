@@ -1541,6 +1541,59 @@ static void handle_move_focus_home(AppState *app) {
     
 }
 
+static bool is_term_definition_node(TreeNode node) {
+    if(tree_node_is_null(node)){
+        return false;
+    }
+    const char *text = tree_node_text(node);
+    int len = strlen(text);
+    if(len < 3 || text[0] != '[' || text[len - 1] != ']'){
+        return false;
+    }
+    return true;
+}
+
+static void handle_move_focus_term_root(AppState *app){
+    TreeNode node = app->ui->current_node;
+    TreeNode parent = tree_node_parent(app->tree_overlay, node);
+    while(!tree_node_is_null(parent)){
+        if(is_term_definition_node(parent)){
+            update_current_with_history(app, parent);
+            log_debug("[handle_move_focus_term_root] Moved focus to term root node id=%lu", tree_node_id(app->ui->current_node));
+            return;
+        }
+        parent = tree_node_parent(app->tree_overlay, parent);
+    }
+    log_info("No term root found, cannot move focus to term root");
+    ui_info_set_message(app->ui, "Term root not found");
+}
+
+static void handle_move_focus_most_left_upper(AppState *app){
+    TreeNode node = app->ui->current_node;
+    while(true){
+        TreeNode left_child = tree_node_first_child(app->tree_overlay, node);
+        if(tree_node_is_null(left_child)){
+            break;
+        }
+        node = left_child;
+    }
+    update_current_with_history(app, node);
+    log_debug("[handle_move_focus_most_left_upper] Moved focus to most left upper node id=%lu", tree_node_id(app->ui->current_node));
+}
+
+static void handle_move_focus_most_left_lower(AppState *app){
+    TreeNode node = app->ui->current_node;
+    while(true){
+        TreeNode right_child = tree_node_last_child(app->tree_overlay, node);
+        if(tree_node_is_null(right_child)){
+            break;
+        }
+        node = right_child;
+    }
+    update_current_with_history(app, node);
+    log_debug("[handle_move_focus_most_left_lower] Moved focus to most left lower node id=%lu", tree_node_id(app->ui->current_node));
+}
+
 static void handle_move_focus_current_task(AppState *app) {
     TreeNode current_task_node = app_metadata_value_node(app, APP_META_CURRENT_TASK );
     if(tree_node_is_null(current_task_node)){
@@ -1705,7 +1758,6 @@ static void handle_finish_task(AppState *app){
             next_current = tree_node_parent(app->tree_overlay, current);
         }
     }
-    next_current = task_find_current(app, next_current);
     
     if(tree_node_is_null(next_current)){
         log_error("Failed to find next current after finishing task, this should not happen");
@@ -1728,6 +1780,7 @@ static void handle_finish_task(AppState *app){
         return;
     }
 
+    next_current = task_find_current(app, next_current);
     app->ui->current_node = next_current;
     TreeNode current_task_value = app_metadata_value_node(app, APP_META_CURRENT_TASK);
     static char current_task_id_str[32];
@@ -2661,6 +2714,15 @@ void app_apply_event(AppState *app, UserOperation uo) {
         break;
     case UO_MOVE_FOCUS_HOME:
         handle_move_focus_home(app);
+        break;
+    case UO_MOVE_FOCUS_TERM_ROOT:
+        handle_move_focus_term_root(app);
+        break;
+    case UO_MOVE_FOCUS_MOST_LEFT_UPPER:
+        handle_move_focus_most_left_upper(app);
+        break;
+    case UO_MOVE_FOCUS_MOST_LEFT_LOWER:
+        handle_move_focus_most_left_lower(app);
         break;
     case UO_MOVE_FOCUS_CURRENT_TASK:
         handle_move_focus_current_task(app);

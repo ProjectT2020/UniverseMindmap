@@ -19,6 +19,9 @@ typedef struct {
         UO_MOVE_FOCUS_LAST_CHILD,
         UO_MOVE_FOCUS_TOP,
         UO_MOVE_FOCUS_HOME,
+        UO_MOVE_FOCUS_TERM_ROOT,
+        UO_MOVE_FOCUS_MOST_LEFT_UPPER,
+        UO_MOVE_FOCUS_MOST_LEFT_LOWER,
         UO_MOVE_FOCUS_CURRENT_TASK,
         UO_MOVE_TO_CHILD_POSITION, // move focus to child at position (param1)
         UO_MOVE_FOLD_BEGIN,

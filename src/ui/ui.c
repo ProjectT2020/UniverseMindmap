@@ -78,6 +78,15 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
             }
             break;
         }
+        case '0':
+            input.type = UO_MOVE_FOCUS_TERM_ROOT;  // first ancestor with [] definition
+            break;
+        case '$':
+            input.type = UO_MOVE_FOCUS_MOST_LEFT_UPPER;
+            break;
+        case 'E':
+            input.type = UO_MOVE_FOCUS_MOST_LEFT_LOWER;
+            break;
         case '^':
             input.type = UO_MOVE_FOCUS_HOME;
             break;
@@ -245,6 +254,8 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
             char next = next_char();
             if (next == 'p') {
                 input.type = UO_PASTE_AS_CHILD;
+            } else if (next == '0') {
+                input.type = UO_MOVE_FOCUS_HOME;
             } else if (next == 'c') {
                 input.type = UO_MOVE_FOCUS_CURRENT_TASK;
             } else if (next == 'j') {
