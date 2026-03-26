@@ -272,6 +272,8 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
                 input.type = UO_COPY_SUBTREE_TO_SYSTEM_CLIPBOARD;
             } else if (next == 'd'){
                 input.type = UO_JUMP_KEYWORD_DEFINITION;
+            } else if (next == 'f'){
+                input.type = UO_OPEN_RESOURCE_LINK;
             } else {
                 log_info("Unknown input sequence: g%c\n", next);
             }
@@ -470,7 +472,7 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
                 case 's': // Alt+s
                     input.type = UO_SEARCH_ENGINE;
                     break;
-                case 'o':
+                case 'o': // Alt+o
                     input.type = UO_OPEN_RESOURCE_LINK;
                     break;
                 case 'a':

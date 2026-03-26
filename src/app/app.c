@@ -8,6 +8,8 @@
 #include <unistd.h>
 #include <termios.h>
 #include <stdint.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 #include "../wal/wal.h"
 #include "../ui/ui.h"
@@ -2367,7 +2369,62 @@ static void handle_open_resource_link(AppState *app){
             log_error("handle_open_resource_link: Failed to spawn process to open code resource link in code editor");
             return;
         }
-    }else if(URL[0] == '#'){
+    }
+    else if(strcmp(parent_text, "vi") == 0){
+         const char *code_path_with_line = tree_node_text(current);
+        int code_path_with_line_len = strlen(code_path_with_line);
+        char code_path_buf[4096];        
+        code_path_buf[0] = '\0';
+        char line_part[64];
+        line_part[0] = '\0';
+        int line_number = 0;
+        const char *code_path = code_path_with_line;
+        const char *colon = strrchr(code_path_with_line, ':');
+        if (colon) {
+            size_t len = colon - code_path_with_line;
+            if(code_path_with_line_len - len > sizeof(line_part)){
+                log_warn("Line part is too long in code resource link, cannot parse line number");
+                ui_info_set_message(app->ui, "Line part is too long in code resource link, cannot parse line number");
+                return;
+            }
+            strncpy(code_path_buf, code_path_with_line, len);
+            code_path_buf[len] = '\0';
+            code_path = code_path_buf;
+
+            strcpy(line_part, colon + 1);
+        } 
+
+        TreeNode code_project_root = context_metadata_get(app, app->ui->current_node, CONTEXT_META_CODE_PROJECT_ROOT);
+        const char *project_root = tree_node_is_null(code_project_root) ? "." : tree_node_text(code_project_root);
+        // check project root exists
+        if(access(project_root, F_OK) != 0){
+            log_warn("Project root '%s' does not exist, cannot open code resource link", project_root);
+            ui_info_set_message(app->ui, "Project root '%s' does not exist, cannot open code resource link", project_root);
+            return;
+        }
+        static char code_full_path[4096];
+        snprintf(code_full_path, sizeof(code_full_path), "%s/%s", project_root, code_path);
+        if(access(code_full_path, F_OK) != 0){
+            log_warn("Code resource '%s' does not exist under project root '%s', cannot open code resource link", code_path, project_root);
+            ui_info_set_message(app->ui, "Code resource '%s' does not exist under project root '%s', cannot open code resource link", code_path, project_root);
+            return;
+        } 
+        static char vim_line_arg[64];
+        snprintf(vim_line_arg, sizeof(vim_line_arg), "+%s", line_part);
+        pid_t pid = fork();
+        if(pid == 0){
+            // does not work in VS Code debug terminal for some reason, works fine in normal terminal, need to investigate
+            chdir(project_root);
+            execlp("vim", "vim", vim_line_arg, code_full_path, NULL);
+            log_error("handle_open_resource_link: Failed to exec vim to open code resource link");
+            exit(1);
+        }
+        // wait for child process 
+        int status;
+        waitpid(pid, &status, 0);
+        log_info("handle_open_resource_link: Vim process exited with status %d", status);
+    }
+    else if(URL[0] == '#'){
         TreeNode page_node = context_metadata_get(app, current, CONTEXT_META_PAGE);
         if(tree_node_is_null(page_node)){
             log_warn("Current node is a page anchor but no page metadata found, cannot open resource link");
