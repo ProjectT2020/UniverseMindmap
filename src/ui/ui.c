@@ -318,6 +318,10 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
                     else if(strcmp("ft", two_char_command) == 0){ 
                          input.type = UO_FINISH_TASK;
                     } 
+                    // as current task
+                    else if(strcmp("ac", two_char_command) == 0){ 
+                        input.type = UO_AS_CURRENT_TASK;
+                    }
                     else {
                         log_info("Unknown two-character command: \\%s\n", two_char_command);
                     }

@@ -113,13 +113,18 @@ static inline bool tree_node_is_mutable(TreeNode n) {
 // Traversal core
 TreeNode tree_node_parent(TreeOverlay *ov, TreeNode n);
 TreeNode tree_node_first_child(TreeOverlay *ov, TreeNode n);
+TreeNode tree_node_first_child_with_filter(TreeOverlay *ov, TreeNode n, bool (*filter)(TreeNode n, void *ctx), void *ctx);
 TreeNode tree_node_next_sibling(TreeOverlay *ov, TreeNode n);
+TreeNode tree_node_next_sibling_with_filter(TreeOverlay *ov, TreeNode n, bool (*filter)(TreeNode n, void *ctx), void *ctx);
 
 bool tree_node_is_first_child(TreeOverlay *ov, TreeNode n);
 
 // derived helper: get previous sibling
 TreeNode tree_node_last_child(TreeOverlay *ov, TreeNode n);
+TreeNode tree_node_last_child_with_filter(TreeOverlay *ov, TreeNode n, bool (*filter)(TreeNode n, void *ctx), void *ctx);
 TreeNode tree_node_prev_sibling(TreeOverlay *ov, TreeNode n);
+TreeNode tree_node_prev_sibling_with_filter(TreeOverlay *ov, TreeNode n, bool (*filter)(TreeNode n, void *ctx), void *ctx);
+
 // traverser
 int tree_traverse(TreeOverlay *ov, TreeNode n, int (*visit)(TreeNode n, void *ctx), void *ctx) ;
 int tree_traverse_with_depth(TreeOverlay *ov, TreeNode n, int64_t depth, 

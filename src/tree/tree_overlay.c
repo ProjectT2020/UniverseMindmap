@@ -350,6 +350,17 @@ TreeNode tree_node_first_child(TreeOverlay *ov, TreeNode n){
     return (TreeNode){ .kind = TREE_NODE_NULL };
 }
 
+TreeNode tree_node_first_child_with_filter(TreeOverlay *ov, TreeNode n, bool (*filter)(TreeNode n, void *ctx), void *ctx){
+    TreeNode child = tree_node_first_child(ov, n);
+    while(!tree_node_is_null(child)){
+        if(filter(child, ctx)){
+            return child;
+        }
+        child = tree_node_next_sibling(ov, child);
+    }
+    return (TreeNode){ .kind = TREE_NODE_NULL };
+}
+
 void tree_node_set_first_child(TreeOverlay *ov, TreeNode *n, TreeNode first_child){
     if(n->kind == TREE_NODE_DISK){
         overlay_materialize(ov, n);
@@ -376,6 +387,17 @@ TreeNode tree_node_next_sibling(TreeOverlay *ov, TreeNode n){
     if( n.kind == TREE_NODE_DISK) {
         NodeRef sref = node_next_sibling(n.disk);
         return overlay_promote_disk_node(ov, sref);
+    }
+    return (TreeNode){ .kind = TREE_NODE_NULL };
+}
+
+TreeNode tree_node_next_sibling_with_filter(TreeOverlay *ov, TreeNode n, bool (*filter)(TreeNode n, void *ctx), void *ctx){
+    TreeNode sibling = tree_node_next_sibling(ov, n);
+    while(!tree_node_is_null(sibling)){
+        if(filter(sibling, ctx)){
+            return sibling;
+        }
+        sibling = tree_node_next_sibling(ov, sibling);
     }
     return (TreeNode){ .kind = TREE_NODE_NULL };
 }
@@ -740,6 +762,18 @@ TreeNode tree_node_last_child(TreeOverlay *ov, TreeNode n){
     return last_child;
 }
 
+TreeNode tree_node_last_child_with_filter(TreeOverlay *ov, TreeNode n, bool (*filter)(TreeNode n, void *ctx), void *ctx){
+    TreeNode last_child = (TreeNode){ .kind = TREE_NODE_NULL };
+    TreeNode child = tree_node_first_child(ov, n);
+    while (!tree_node_is_null(child)) {
+        if(filter(child, ctx)){
+            last_child = child;
+        }
+        child = tree_node_next_sibling(ov, child);
+    }
+    return last_child;
+}
+
 TreeNode tree_node_prev_sibling(TreeOverlay *ov, TreeNode n){
     TreeNode p = tree_node_parent(ov, n);
     if (tree_node_is_null(p)) {
@@ -757,6 +791,18 @@ TreeNode tree_node_prev_sibling(TreeOverlay *ov, TreeNode n){
 
     return prev_sibling;
 }
+
+TreeNode tree_node_prev_sibling_with_filter(TreeOverlay *ov, TreeNode n, bool (*filter)(TreeNode, void *), void *ctx){
+    TreeNode sibling = tree_node_prev_sibling(ov, n);
+    while(!tree_node_is_null(sibling)){
+        if(filter(sibling, ctx)){
+            return sibling;
+        }
+        sibling = tree_node_prev_sibling(ov, sibling);
+    }
+    return (TreeNode){ .kind = TREE_NODE_NULL };
+}
+
 static NodeDisk *node_img(uint8_t *base, uint64_t offset){
     return (NodeDisk *)(base + offset);
 }

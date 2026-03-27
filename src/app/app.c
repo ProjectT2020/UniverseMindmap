@@ -542,7 +542,8 @@ void handle_add_child_to_tail(AppState *app) {
 
     handle_edit_node(app);
 
-    if(is_current_task){
+    const char *current_text = tree_node_text(ui->current_node);
+    if(is_current_task && current_text != NULL && current_text[0] != '.') {
         // update current task
         uint64_t current_task_node_id = tree_node_id(ui->current_node);
         TreeNode context_current_task_value = app_metadata_value_node(app,  APP_META_CURRENT_TASK);
@@ -1744,6 +1745,14 @@ static void handle_create_sibling_task(AppState *app) {
 }
 
 static TreeNode task_find_current(AppState *app, TreeNode parent);
+
+bool tree_node_not_started_with_dot(TreeNode node, void *ctx) {
+    if(ctx != NULL){
+        log_error("tree_node_not_started_with_dot: ctx should be null");
+    }
+    const char *text = tree_node_text(node);
+    return text[0] != '.';
+}
 static void handle_finish_task(AppState *app){
     handle_move_focus_current_task(app);
     TreeNode current = app->ui->current_node;
@@ -1753,9 +1762,10 @@ static void handle_finish_task(AppState *app){
         ui_info_set_message(app->ui, "This is the root task, Enjoy your life!");
         return;
     }
-    TreeNode next_current = tree_node_next_sibling(app->tree_overlay, current);
+    TreeNode next_current = tree_node_next_sibling_with_filter(
+        app->tree_overlay, current, tree_node_not_started_with_dot, NULL);
     if(tree_node_is_null(next_current)){
-        next_current = tree_node_prev_sibling(app->tree_overlay, current);
+        next_current = tree_node_prev_sibling_with_filter(app->tree_overlay, current, tree_node_not_started_with_dot, NULL);
         if(tree_node_is_null(next_current)  || strcmp(tree_node_text(next_current), CONTEXT_META_NAME) == 0){
             next_current = tree_node_parent(app->tree_overlay, current);
         }
@@ -1807,12 +1817,12 @@ static TreeNode task_find_current(AppState *app, TreeNode parent){
         log_error("task_find_current: parent node is null");
         return parent;
     }
-    TreeNode child = tree_node_first_child(app->tree_overlay, parent);
+    TreeNode child = tree_node_first_child_with_filter(app->tree_overlay, parent, tree_node_not_started_with_dot, NULL);
     if(tree_node_is_null(child)){
         return parent;
     }else{
         if(strcmp(tree_node_text(child), CONTEXT_META_NAME) == 0){
-            child = tree_node_next_sibling(app->tree_overlay, child);
+            child = tree_node_next_sibling_with_filter(app->tree_overlay, child, tree_node_not_started_with_dot, NULL);
             if(tree_node_is_null(child)){
                 return parent;
             }
@@ -1823,12 +1833,12 @@ static TreeNode task_find_current(AppState *app, TreeNode parent){
 
 static TreeNode task_find_next(AppState *app, TreeNode task_node) {
     TreeNode parent = tree_node_parent(app->tree_overlay, task_node);
-    TreeNode sibling = tree_node_next_sibling(app->tree_overlay, task_node);
+    TreeNode sibling = tree_node_next_sibling_with_filter(app->tree_overlay, task_node, tree_node_not_started_with_dot, NULL);
     if(tree_node_is_null(sibling)){
         if(strcmp(tree_node_text(parent), APP_TASK_STACK_NAME) == 0){
-            sibling = tree_node_first_child(app->tree_overlay, parent);
+            sibling = tree_node_first_child_with_filter(app->tree_overlay, parent, tree_node_not_started_with_dot, NULL);
             if(strcmp(tree_node_text(sibling), CONTEXT_META_NAME) == 0){
-                sibling = tree_node_next_sibling(app->tree_overlay, sibling);
+                sibling = tree_node_next_sibling_with_filter(app->tree_overlay, sibling, tree_node_not_started_with_dot, NULL);
             }
         }else{
             sibling = task_find_next(app, parent);
@@ -1862,9 +1872,9 @@ static TreeNode task_find_prev(AppState *app, TreeNode task_node) {
         return task_find_current(app, task_node);
     }
     TreeNode parent = tree_node_parent(app->tree_overlay, task_node);
-    TreeNode sibling = tree_node_prev_sibling(app->tree_overlay, task_node);
+    TreeNode sibling = tree_node_prev_sibling_with_filter(app->tree_overlay, task_node, tree_node_not_started_with_dot, NULL);
     if(tree_node_is_null(sibling) || strcmp(tree_node_text(sibling), CONTEXT_META_NAME) == 0){
-        TreeNode child = tree_node_last_child(app->tree_overlay, parent);
+        TreeNode child = tree_node_last_child_with_filter(app->tree_overlay, parent, tree_node_not_started_with_dot, NULL);
         if(tree_node_id(child) == tree_node_id(task_node)){
             return task_find_prev(app, parent);
         }
@@ -1897,6 +1907,24 @@ static void handle_prev_task(AppState *app) {
     event_destroy(event);
     log_info("Moved to previous task '%s'", tree_node_text(prev_task));
     ui_info_set_message(app->ui, "Moved to previous task '%s'", tree_node_text(prev_task));
+}
+
+static void handle_as_current_task(AppState *app) {
+    TreeNode current = app->ui->current_node;
+    const char *task_name = tree_node_text(current);
+    TreeNode current_task_value = app_metadata_value_node(app, APP_META_CURRENT_TASK);
+    static char current_task_id_str[32];
+    sprintf(current_task_id_str, "%llu", tree_node_id(current));
+    Event *event = event_create_update_text(
+        app->tree_overlay->last_applied_lsn + 1,
+        tree_node_id(current_task_value),
+        current_task_id_str
+    );
+    int r = operate_commit_event(app->operate, event);
+    if(r != 0){
+        log_warn("Failed to update current task");
+    }
+    ui_info_set_message(app->ui, "Set current task to '%s'", task_name);
 }
 
 static void handle_ask_ai(AppState *app, UserOperation uo) {
@@ -2870,6 +2898,9 @@ void app_apply_event(AppState *app, UserOperation uo) {
         break;
     case UO_PREV_TASK:
         handle_prev_task(app);
+        break;
+    case UO_AS_CURRENT_TASK:
+        handle_as_current_task(app);
         break;
 
     // external resources

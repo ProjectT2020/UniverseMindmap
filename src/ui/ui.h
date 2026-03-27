@@ -35,6 +35,7 @@ typedef struct {
         UO_CREATE_CHILD_TASK,
         UO_CREATE_SIBLING_TASK,
         UO_FINISH_TASK,
+        UO_AS_CURRENT_TASK,
         UO_NEXT_TASK,
         UO_PREV_TASK,
 
