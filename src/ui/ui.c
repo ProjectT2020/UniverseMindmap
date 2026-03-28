@@ -565,11 +565,11 @@ char* edit_mode(UiContext *ctx, const char *prefix, int cursor_x, int cursor_y, 
                     }
                     buf[i++] = (char)c2;
                 }
-                if(strcmp(buf, "200") == 0){
+                if(strcmp(buf, "200") == 0){// paste start
                     in_paste = true;
                     continue;
                 }
-                if(strcmp(buf, "201") == 0){
+                if(strcmp(buf, "201") == 0){// paste end
                     in_paste = false;
                     continue;
                 }
@@ -597,7 +597,25 @@ char* edit_mode(UiContext *ctx, const char *prefix, int cursor_x, int cursor_y, 
                 tty_erase_chars(w);
             }
             continue;
-        } else {
+        } else if(c == 0x17){// Ctrl+W; delete last word
+            // delete trailing spaces
+            int len = (int)strlen(new_name);
+            while(len > 0 && new_name[len - 1] == ' '){
+                utf8_pop_last_char(new_name);
+                tty_erase_chars(1);
+                len--;
+            }
+            // delete last word
+            while(len > 0 && new_name[len - 1] != ' '){
+                int w = utf8_last_char_width(new_name);
+                utf8_pop_last_char(new_name);
+                tty_erase_chars(w);
+                // update len
+                len = (int)strlen(new_name);
+            }
+            continue;
+        }
+        else {
             // read one UTF-8 codepoint (may be multiple bytes)
             unsigned char uc = (unsigned char)c;
             char mb[MB_CUR_MAX];
