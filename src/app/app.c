@@ -15,6 +15,7 @@
 #include "../ui/ui.h"
 #include "../operate/operate.h"
 #include "../utils/logging.h"
+#include "../utils/uri_template.h"
 #include "../command/command.h" 
 #include "../ui/tty.h"
 
@@ -2479,7 +2480,59 @@ static void handle_open_resource_link(AppState *app){
             return;
         }
 
-    }else if(!tree_node_is_null(parent)){
+    }
+    else if(URL[0] == '[' && URL[strlen(URL) - 1] == ']'){
+        // RFC; JSR; JEP; PEP; etc. links
+        char *space = strchr(URL, ' ');
+        if(space == NULL){
+            log_warn("handle_open_resource_link: Detected potential RFC/JSR/JEP/PEP link but no space found to separate type and number, cannot open resource link");
+            ui_info_set_message(app->ui, "Detected potential RFC/JSR/JEP/PEP link but no space found to separate type and number, cannot open resource link");
+            return;
+        }
+        const char *item = URL + 1;
+        int key_len = space - item;
+        if(key_len <= 0){
+            log_warn("handle_open_resource_link: Detected potential RFC/JSR/JEP/PEP link but no valid key found, cannot open resource link");
+            ui_info_set_message(app->ui, "Detected potential RFC/JSR/JEP/PEP link but no valid key found, cannot open resource link");
+            return;
+        }
+        char value[64];
+        strncpy(value, space + 1, sizeof(value));
+        value[strlen(value) - 1] = '\0'; // remove trailing ']'
+        char key[64];
+        strncpy(key, item, key_len);
+        key[key_len] = '\0';
+        if(value[0] != '\0'){
+            TreeNode page_node = context_metadata_get(app, current, CONTEXT_META_PAGE);
+            if(tree_node_is_null(page_node)){
+                log_warn("Current node is a %s link but no page metadata found, cannot open resource link", key);
+                ui_info_set_message(app->ui, "Current node is a %s link but no page metadata found, cannot open resource link", key);
+                return;
+            }
+            const char *page = tree_node_text(page_node);
+            static char url[2048];
+            UriTemplateVar vars[] = {
+                { key, value }
+            };
+            uri_template_expand(page, vars, 1, url, sizeof(url));
+            char *argv[] = {
+                "open",
+                "-a",
+                "Firefox",
+                "--",
+                (char *)url,
+                NULL
+            };
+            spawn_argv = argv; 
+            int r = posix_spawnp(&pid, "open", NULL, NULL, spawn_argv, NULL);
+            if (r != 0) {
+                log_error("handle_open_resource_link: Failed to spawn process to open %s link", key);
+                return; 
+            }
+            log_info("handle_open_resource_link: Spawned process with PID: %d to open %s link", pid, key);
+        }
+    }
+    else if(!tree_node_is_null(parent)){
         if(strcmp(parent_text, CONTEXT_WIKI_TERM) == 0){
             const char *term = tree_node_text(current);
             TreeNode wiki_prefix = context_metadata_get(app, app->ui->current_node, CONTEXT_META_WIKI_PREFIX);

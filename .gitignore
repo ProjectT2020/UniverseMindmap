@@ -10,3 +10,4 @@ tags
 bin/
 universe-mindmap
 .clangd
+tests/*_test

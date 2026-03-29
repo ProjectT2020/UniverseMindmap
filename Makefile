@@ -13,6 +13,7 @@ CORE_SRCS := \
 	src/utils/list.c \
 	src/utils/stack.c \
 	src/utils/queue.c \
+	src/utils/uri_template.c \
 	src/event/event.c \
 	src/wal/wal.c \
 	src/utils/hashtable_u64.c \
