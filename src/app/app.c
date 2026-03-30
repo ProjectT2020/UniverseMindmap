@@ -858,8 +858,38 @@ void handle_fold_level1(AppState *app){
         child = tree_node_next_sibling(app->tree_overlay, child);
     }
 
-    node_metadata_set(app, current, "fold_level", "1");
+    // node_metadata_set(app, current, "fold_level", "1");
     ui_center_view_on_current(app->ui);
+}
+
+void handle_fold_and_move_to_child(AppState *app) {
+    while(true){
+        TreeNode current = app->ui->current_node;
+        TreeNode child = tree_node_first_child(app->tree_overlay, current);
+        if(tree_node_is_null(child)){
+            goto end;
+        }
+        handle_fold_level1(app);
+        app->ui->show_child_position = true;
+        ui_render(app->ui);
+        char next = getchar();
+        int pos = 0;
+        if('0' <= next && next <= '9'){
+            pos = next - '0';
+        } else if('a' <= next && next <= 'z'){
+            pos = next - 'a' + 10; // 10-35 for a-z
+        } else if('A' <= next && next <= 'Z'){
+            pos = next - 'A' + 36; // 36-61 for A-Z
+        } else if(next == 0x1b){ // ESC
+            goto end;
+        } else {
+            goto end;
+        }
+        ui_move_focus_child_position(app->ui, pos);
+    };
+end:
+    app->ui->show_child_position = false;
+    return;
 }
 
 void handle_fold_more(AppState *app) {
@@ -1537,6 +1567,10 @@ static void handle_move_focus_last_child(AppState *app) {
 static void handle_move_focus_home(AppState *app) {
     
     TreeNode node = app->ui->current_node;
+    if(!tree_node_has_parent(app->tree_overlay,node)){
+        log_info("Already at home node, no need to move focus");
+        return;
+    }
     while (!tree_node_is_null(tree_node_parent(app->tree_overlay, node))) {
         node = tree_node_parent(app->tree_overlay, node);
     } 
@@ -1711,6 +1745,34 @@ static void handle_jump_to_ui_node_mark(AppState *app, UserOperation uo) {
     app->ui->mark_and_show_visible_nodes = false;
     log_debug("Jumped to UI node mark %d at node id=%lu", mark_idx, node_id);
     ui_info_set_message(app->ui, "Jumped to UI node mark %d", mark_idx);
+}
+
+static void handle_index_from_root(AppState *app) {
+    handle_move_focus_home(app);
+    while(true){
+        handle_fold_level1(app);
+        app->ui->show_child_position = true;
+        ui_render(app->ui);
+        char next = getchar();
+        int pos = 0;
+        if('0' <= next && next <= '9'){
+            pos = next - '0';
+        } else if('a' <= next && next <= 'z'){
+            pos = next - 'a' + 10; // 10-35 for a-z
+        } else if('A' <= next && next <= 'Z'){
+            pos = next - 'A' + 36; // 36-61 for A-Z
+        } else {
+            if(next == 0x1b){ // ESC key
+                log_info("Index navigation cancelled");
+                break;
+            } 
+            log_info("Unknown input sequence: f%c\n", next);
+            break;
+        }
+        handle_move_to_child_position(app, pos);
+    }
+    app->ui->show_child_position = false;
+    log_debug("[handle_index_from_root] Finished index navigation, current_node id=%lu", tree_node_id(app->ui->current_node));
 }
 
 static void handle_send_command(AppState *app){
@@ -2745,7 +2807,7 @@ void app_apply_event(AppState *app, UserOperation uo) {
         handle_fold_more(app);
         break;
     case UO_FOLD_LEVEL_1:
-        handle_fold_level1(app);
+        handle_fold_and_move_to_child(app);
         break;
     case UO_REDUCE_FOLDING:
         handle_reduce_folding(app);
@@ -2873,6 +2935,9 @@ void app_apply_event(AppState *app, UserOperation uo) {
         break;
     case UO_JUMP_TO_UI_NODE_MARK:
         handle_jump_to_ui_node_mark(app, uo);
+        break;
+    case UO_INDEX_FROM_ROOT:
+        handle_index_from_root(app);
         break;
     
         // view

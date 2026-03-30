@@ -479,6 +479,11 @@ void tree_node_set_layout_height(TreeOverlay *ov, TreeNode *n, uint64_t height) 
     return ;
 }
 
+bool tree_node_has_parent(TreeOverlay *ov, TreeNode n){
+    TreeNode parent = tree_node_parent(ov, n);
+    return !tree_node_is_null(parent);
+}
+
 
 void tree_layout_change_on_show_hidden_children(TreeOverlay *ov, TreeNode *n){
     if(tree_node_is_null(*n)){

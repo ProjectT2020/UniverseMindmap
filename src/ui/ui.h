@@ -30,6 +30,7 @@ typedef struct {
         UO_MOVE_PARENT_PREV_SIBLING_END,
         UO_MOVE_PARENT_NEXT_SIBLING_BEGIN,
         UO_MOVE_PARENT_NEXT_SIBLING_END,
+        UO_INDEX_FROM_ROOT,
 
         // task
         UO_CREATE_CHILD_TASK,

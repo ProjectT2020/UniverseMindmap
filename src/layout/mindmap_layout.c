@@ -238,6 +238,10 @@ static bool mindmap_node_should_hightlight(UiContext *ctx, TreeNode n) {
     return false;
 }
 
+static bool is_current_node(UiContext *ctx, TreeNode n){
+    return tree_node_id(n) == tree_node_id(ctx->current_node);
+}
+
 /**
  * position: -1: don't show position; >0: show position 
  */
@@ -366,6 +370,7 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
     bool is_first_child = node_id == tree_node_id(top_sibling);
     bool is_last_child = node_id == tree_node_id(bottom_sibling);
     int link_x = node_render_x - link_width + 1;
+    int link_y = text_render_y;
 
     // show jump mark
     if(!tree_node_is_null(parent) && link_x >=0 && link_x < view_w){
@@ -373,7 +378,6 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
         if(ctx->mark_and_show_visible_nodes && ctx->mark >= mark_page_size){
             ctx->mark_and_show_visible_nodes = false;
         }
-        int link_y = text_render_y;
         if(ctx->mark_and_show_visible_nodes){
             if(0 <= ctx->mark && ctx->mark < mark_page_size){
                 // do mark
@@ -390,7 +394,7 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
                 marked_node = true;
             }
             ctx->mark++;
-        }else if(position > 0){
+        }else if(position >= 0){
             char pos = '0';
             if(position < 10){
                 pos = '0' + position;
@@ -399,10 +403,12 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
             }else if(position < 10 + 26 + 26){
                 pos = 'A' + (position - 10 - 26);
             }
+            // underline
+            printf("\033[4m");
             printf("\033[%d;%dH%c", link_y + 1, link_x + 1, pos);
+            printf("\033[24m"); // reset underline
         } else if(is_first_child){
             // first child, draw ┌
-            int link_y = text_render_y;
             if(link_x >=0 && link_y >=0 && link_y < view_h){
                 if(text_render_y == parent_text_render_y){
                     printf("\033[%d;%dH┬", link_y + 1, link_x + 1);
@@ -412,7 +418,6 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
             }
         }else if(is_last_child){
             // last child, draw └
-            int link_y = text_render_y;
             if(link_x >=0 && link_y >=0 && link_y < view_h){
                 if(text_render_y == parent_text_render_y){
                     printf("\033[%d;%dH┴", link_y + 1, link_x + 1);
@@ -422,7 +427,6 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
             }
         }else {
             // middle child, draw ├
-            int link_y = text_render_y;
             if(link_x >=0 && link_y >=0 && link_y < view_h){
                 if(text_render_y == parent_text_render_y){
                     printf("\033[%d;%dH┼", link_y + 1, link_x + 1);
@@ -473,7 +477,7 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
         child = ui_next_visible_sibling(ctx, child)
     ) {
         int pos = -1;
-        if(ctx->show_child_position && tree_node_id(n) == tree_node_id(ctx->current_node)){
+        if(ctx->show_child_position && is_current_node(ctx, n)){
             pos = child_position;
         }
         mindmap_render_node(ctx, child, child_start_x, child_start_y, text_render_y, pos);
@@ -489,7 +493,7 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
         TreeNode last_visible_child = ui_last_visible_child(ctx, n);
         TreeNode next_sibling = ui_next_visible_sibling(ctx, first_visible_child);
         if(tree_node_id(first_visible_child) == tree_node_id(last_visible_child)){
-            if(!marked_node){
+            if(!marked_node && !(is_current_node(ctx, n) && ctx->show_child_position)){
                 printf("\033[%d;%dH ─", text_render_y + 1, text_render_x + text_w + 1);
             }
         }else if(tree_node_id(next_sibling) == tree_node_id(last_visible_child)){
@@ -527,6 +531,14 @@ void mindmap_layout_and_render(UiContext *ctx) {
         }
         if (ctx->view_x > cx - 2) // text is on the left side of the view
             ctx->view_x = cx - 2;
+        
+        if(ctx->show_child_position){
+            TreeNode child = ui_first_visible_child(ctx, ctx->current_node);
+            mind_node_layout_wh(ctx, ctx->overlay, child, &cx, &cy, &cw, &ch);
+            if(ctx->view_x < cx + cw - ctx->width + 2){ // text exceeds view right
+                ctx->view_x = cx + cw - ctx->width + 2; 
+            }
+        }
     }
     printf("\033[2J");
     mindmap_render_node(ctx, ctx->overlay->root, 0, 0, -1, -1/*don't show position*/);

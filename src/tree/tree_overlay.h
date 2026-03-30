@@ -150,6 +150,8 @@ void tree_node_set_collapse(TreeOverlay *ov, TreeNode *n, bool collapsed);
 void tree_node_set_hidden(TreeOverlay *ov, TreeNode *n, bool hidden);
 void tree_node_set_layout_height(TreeOverlay *ov, TreeNode *n, uint64_t height);
 
+// relationships
+bool tree_node_has_parent(TreeOverlay *ov, TreeNode n);
 
 // ===== Mutation API (COW + edit) =====
 void overlay_materialize(TreeOverlay *ov, TreeNode *node);

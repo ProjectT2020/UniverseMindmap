@@ -78,7 +78,7 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
             }
             break;
         }
-        case '0':
+        case '^':
             input.type = UO_MOVE_FOCUS_TERM_ROOT;  // first ancestor with [] definition
             break;
         case '$':
@@ -87,7 +87,7 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
         case 'E':
             input.type = UO_MOVE_FOCUS_MOST_LEFT_LOWER;
             break;
-        case '^':
+        case '0':
             input.type = UO_MOVE_FOCUS_HOME;
             break;
         case 'J':
@@ -98,27 +98,44 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
             break;
         case 'z': {
             char next = next_char();
-            if (next == 'c') {
+            switch(next) {
+            case 'c':
                 input.type = UO_FOLD_NODE;      // zc fold current node
-            } else if (next == 'r') {
+                break;
+            case 'r':
                 input.type = UO_REDUCE_FOLDING;    // zr expand more levels (reveal more)
-            } else if (next == 'o') {
+                break;
+            case 'o':
                 input.type = UO_UNFOLD_NODE;    // zo expand current node
-            } else if (next == 'm') {
+                break;
+            case 'm':
                 input.type = UO_FOLD_MORE;  // zm fold more (show less)
-            } else if (next == 'M') {
+                break;
+            case 'M':
                 input.type = UO_FOLD_LEVEL_1;  // zM fold to level 1
-            } else if (next == '.') {
+                break;
+            case 'T':
+                input.type = UO_INDEX_FROM_ROOT;
+                break;
+            case 0x14: // Ctrl+T
+                // input.type = ;
+                break;
+            case '.':
                 input.type = UO_CENTER_VIEW;    // z. center current node
-            } else if (next == 's') {
+                break;
+            case 's':
                 input.type = UO_PLACE_LEFT;    // zs current node on the left
-            } else if (next == 'e') {
+                break;
+            case 'e':
                 input.type = UO_PLACE_RIGHT;    // zs current node on the left
-            } else if (next == 'H') {
+                break;
+            case 'H':
                 input.type = UO_VIEW_HALF_SCREEN_LEFT;
-            } else if (next == 'L') {
+                break;
+            case 'L':
                 input.type = UO_VIEW_HALF_SCREEN_RIGHT;
-            } else {
+                break;
+            default:
                 log_info("Unknown input sequence: z%c\n", next);
             }
             break;
