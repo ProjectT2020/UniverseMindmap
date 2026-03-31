@@ -2630,17 +2630,40 @@ static void handle_open_resource_link(AppState *app){
     log_debug("[handle_open_resource_link] Spawned process with PID: %d", pid);
 }
 
-static void handle_jump_keyword_definition(AppState *app){
-    const char *keyword = tree_node_text(app->ui->current_node);
-    snprintf(app->operate->search_query, sizeof(app->operate->search_query), "[%s]", keyword);
-    TreeNode result = operate_search_next(app->operate, app->tree_overlay->root);
+/**
+ * return: 0: found; 1: not found; -1: error
+ */
+static int handle_jump_hierachy_definition(AppState *app, TreeNode subtree_root, const char *keywords) {
+    char *next_key_word = strchr(keywords, '|');
+    int keyword_len = next_key_word ? (next_key_word - keywords) : strlen(keywords);
+    char search_term[256];
+    snprintf(search_term, sizeof(search_term), "[%.*s]", keyword_len, keywords);
+    log_debug("handle_jump_hierachy_definition: Searching for keyword '%s' in subtree rooted at node id=%lu", search_term, tree_node_id(subtree_root));
+    TreeNode result = operate_search_next_in_subtree(app->operate, subtree_root, search_term);
     if(tree_node_is_null(result)){
-        ui_info_set_message(app->ui, "No more matches for '%s'", app->operate->search_query);
-        log_info("No more matches found for query '%s'", app->operate->search_query);
+        log_info("handle_jump_hierachy_definition: No match found for keyword '%s' in subtree rooted at node id=%lu", search_term, tree_node_id(subtree_root));
+        return 1;
+    }
+    if(next_key_word){
+        return handle_jump_hierachy_definition(app, result, next_key_word + 1);
     }else{
         update_current_with_history(app, result);
-        ui_info_set_message(app->ui, "Found match for '%s' at node id=%lu", app->operate->search_query, tree_node_id(result));
-        log_info("Found match for query '%s' at node id=%lu", app->operate->search_query, tree_node_id(result));
+        return 0;
+    }
+    
+}
+
+static void handle_jump_keyword_definition(AppState *app){
+    int r = handle_jump_hierachy_definition(app, app->tree_overlay->root, tree_node_text(app->ui->current_node));
+    if(r == 0){
+        app->ui->current_node = tree_find_by_id(app->tree_overlay, tree_node_id(app->ui->current_node));
+        ui_info_set_message(app->ui, "Jumped to definition for '%s'", tree_node_text(app->ui->current_node));
+        log_info("Jumped to definition for '%s'", tree_node_text(app->ui->current_node));
+    }else if(r == 1){
+        ui_info_set_message(app->ui, "No definition found for '%s'", tree_node_text(app->ui->current_node));
+        log_info("No definition found for '%s'", tree_node_text(app->ui->current_node));
+    }else{
+        log_error("Error occurred while searching for definition for '%s'", tree_node_text(app->ui->current_node));
     }
 }
 

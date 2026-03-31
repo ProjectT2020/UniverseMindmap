@@ -51,6 +51,7 @@ int operate_copy_paste_as_last_child(Operate *operate, TreeNode parent);
 
 TreeNode operate_search_next(Operate *operate, TreeNode start_node);
 TreeNode operate_search_prev(Operate *operate, TreeNode start_node);
+TreeNode operate_search_next_in_subtree(Operate *operate, TreeNode start_node, const char *search_term);
 
 int operate_edit_node(Operate *operate, TreeNode node);
 int operate_reduce_folding(Operate *operate, TreeNode current, int fold_level);

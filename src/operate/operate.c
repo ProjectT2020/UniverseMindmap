@@ -468,6 +468,48 @@ TreeNode operate_search_next(Operate *operate, TreeNode start_node){
     return (TreeNode){ .kind = TREE_NODE_NULL };
 }
 
+TreeNode operate_search_next_in_subtree(Operate *operate, TreeNode start_node, const char *search_term){
+    TreeOverlay *ov = operate->overlay;
+
+    TreeNode current = tree_node_first_child(ov, start_node);
+    uint64_t start_id = tree_node_id(start_node);
+
+    bool from_child = false;
+    while (tree_node_id(current) != start_id) {
+        TreeNode next_node;
+        if(from_child){
+            next_node = tree_node_next_sibling(ov, current);
+            if(tree_node_is_null(next_node)){
+                current = tree_node_parent(ov, current);
+                from_child = true;
+                continue;
+            }else{
+                from_child = false;
+            }
+        }else{
+            next_node = tree_node_first_child(ov, current);
+            if(tree_node_is_null(next_node)){
+                next_node = tree_node_next_sibling(ov, current);
+                if(tree_node_is_null(next_node)){
+                    current = tree_node_parent(ov, current);
+                    from_child = true;
+                    continue;
+                }
+            }
+        }
+
+        const char *node_text = tree_node_text(next_node);
+        if (strcmp(node_text, search_term) == 0) {
+            return next_node; // Found exact match
+        }
+
+        current = next_node;
+    }
+
+    // No match found
+    return (TreeNode){ .kind = TREE_NODE_NULL };
+}
+
 
 TreeNode operate_search_prev(Operate *operate, TreeNode start_node){
     TreeOverlay *ov = operate->overlay;
