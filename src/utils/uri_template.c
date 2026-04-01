@@ -1,6 +1,5 @@
 #include "uri_template.h"
 
-#include <ctype.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -29,7 +28,11 @@ static int append_percent_encoded(char *output,
 }
 
 static int is_unreserved(unsigned char ch) {
-	return isalnum(ch) || ch == '-' || ch == '.' || ch == '_' || ch == '~';
+	/* RFC 3986 unreserved set is ASCII-only and must be locale-independent. */
+	return ((ch >= 'A' && ch <= 'Z') ||
+			(ch >= 'a' && ch <= 'z') ||
+			(ch >= '0' && ch <= '9') ||
+			ch == '-' || ch == '.' || ch == '_' || ch == '~' || ch == '/');
 }
 
 static const char *find_var_value(const char *name,

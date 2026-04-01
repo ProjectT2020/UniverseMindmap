@@ -190,6 +190,10 @@ static bool empty_text(const char *text){
     return true;
 }
 
+/**
+ * return: value node of the key in the context
+ *         TREE_NODE_NULL if not found
+ */
 static TreeNode context_metadata_get(AppState *app, TreeNode context, const char *key){
     if(tree_node_is_null(context)){
         return (TreeNode){.kind = TREE_NODE_NULL};
@@ -2377,11 +2381,20 @@ void handle_search_prev(AppState *app){
 }
 
 static void handle_search_engine(AppState *app) {
-    const char *url_format = "https://www.google.com/search?q=%s";
+    const char *url_format = "https://www.google.com/search?q=%.*s";
     const char *query = tree_node_text(app->ui->current_node);
+    int query_len = strlen(query);
+    int left_bracket_count = 0;
+    for(int i = 0; 
+        query[i] == '[' && query[query_len - 1 - i] == ']' && i < query_len / 2
+        ; i++){
+        left_bracket_count++; 
+    }
+    const char *trimmed_query = query + left_bracket_count;
+    int trimmed_query_len = query_len - 2 * left_bracket_count;
     char url[2048];
-    snprintf(url, sizeof(url), url_format, query);
-    log_debug("[handle_search_engine] Opening URL: %s", url);
+    snprintf(url, sizeof(url), url_format, trimmed_query_len, trimmed_query);
+    log_debug("[handle_search_engine] Opening URL: %.*s", trimmed_query_len, trimmed_query);
     pid_t pid;
     char *argv[] = {
         "open",
@@ -2406,6 +2419,89 @@ static void handle_open_resource_link(AppState *app){
     const char *URL = tree_node_text(app->ui->current_node);
     pid_t pid;
     char **spawn_argv;
+    
+    // MediaWiki style without [[]]: resource_type:resource_path
+    char *colon = strchr(URL, ':');
+    if(colon == NULL){
+        goto not_MediaWiki_style_ref;
+    }
+    // no space allowed in resource type
+    if(strchr(URL, ' ') != NULL && strchr(URL, ' ') < colon){
+        goto not_MediaWiki_style_ref;
+    }
+    int resource_type_len = colon - URL;
+    if(resource_type_len <= 0){
+        goto not_MediaWiki_style_ref;
+    }
+    char resource_template_meta_key[64];
+    snprintf(resource_template_meta_key, sizeof(resource_template_meta_key), "source_%.*s", resource_type_len, URL);
+    char *resource_key = resource_template_meta_key + strlen("source_");
+    TreeNode resource_template_node = context_metadata_get(app, current, resource_template_meta_key);
+    if(tree_node_is_null(resource_template_node)){
+        log_warn("No resource template found for resource type '%.*s'", resource_type_len, URL);
+        goto not_MediaWiki_style_ref;
+    }
+    const char *resource_id = colon + 1;
+    const char *resource_template = tree_node_text(resource_template_node);
+    char *man_section = "";
+    if(strcmp(resource_key, "section") == 0){
+        log_warn("Resource type 'section' is reserved for man sections and cannot be used in resource links");
+        ui_info_set_message(app->ui, "Resource type 'section' is reserved for man sections and cannot be used in resource links");
+        return;
+    }
+    if(strcmp(resource_key, "man") == 0){
+        // validate man page format: name.section
+        char *dot = strchr(resource_id, '.');
+        if(dot == NULL){
+            log_warn("Invalid man page reference '%s', expected format 'name.section'", resource_id);
+            ui_info_set_message(app->ui, "Invalid man page reference '%s', expected format 'name.section'", resource_id);
+            return;
+        }
+        man_section = dot + 1;
+        for(char *p = man_section; *p; p++){
+            if('0' <= *p && *p <= '9'){
+                continue;
+            }else{
+                log_warn("Invalid man page section '%s' in reference '%s', expected numeric section", man_section, resource_id);
+                ui_info_set_message(app->ui, "Invalid man page section '%s' in reference '%s', expected numeric section", man_section, resource_id);
+                return;
+            }
+        }
+    }
+
+    UriTemplateVar vars[] = {
+        {
+            .name = resource_key,
+            .value = resource_id
+        },
+        {
+            .name = "section",
+            .value = man_section
+        }
+    };
+    char rendered[4096];
+    int r = uri_template_expand(resource_template, vars, sizeof(vars)/sizeof(vars[0]),
+     rendered, sizeof(rendered));
+    if(r != 0){
+        log_warn("Failed to expand resource template for resource type '%.*s'", resource_type_len, URL);
+        ui_info_set_message(app->ui, "Failed to expand resource template for resource type '%.*s'", resource_type_len, URL);
+        return;
+    }
+    // open the rendered URL with default application
+    char *argv[] = {
+        "open",
+        rendered,
+        NULL
+    };
+    r = posix_spawnp(&pid, "open", NULL, NULL, argv, NULL);
+    if (r != 0) {
+        log_error("handle_open_resource_link: Failed to spawn process to open resource link");
+        return;
+    }
+    log_debug("[handle_open_resource_link] Spawned process with PID: %d to open resource link", pid);
+    return;
+
+not_MediaWiki_style_ref:
     if(strcmp(parent_text, CONTEXT_CODE_RESOURCE) == 0){
         const char *code_path_with_line = tree_node_text(current);
         int code_path_with_line_len = strlen(code_path_with_line);

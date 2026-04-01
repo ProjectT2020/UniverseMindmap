@@ -8,6 +8,7 @@ static void test_level1_examples(void) {
     UriTemplateVar vars[] = {
         { "var", "value" },
         { "hello", "Hello World!" },
+        { "topic", "思维导图" },
     };
     char out[256];
 
@@ -16,6 +17,9 @@ static void test_level1_examples(void) {
 
     assert(uri_template_expand("{hello}", vars, 2, out, sizeof(out)) == 0);
     assert(strcmp(out, "Hello%20World%21") == 0);
+
+    assert(uri_template_expand("{topic}", vars, 3, out, sizeof(out)) == 0);
+    assert(strcmp(out, "%E6%80%9D%E7%BB%B4%E5%AF%BC%E5%9B%BE") == 0);
 }
 
 static void test_literal_and_missing_var(void) {
