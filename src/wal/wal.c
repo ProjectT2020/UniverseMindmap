@@ -72,9 +72,10 @@ static int write_full(int fd, const void *buf, size_t n) {
 static int wal_scan_and_recover(int fd, uint64_t *out_last_lsn, uint64_t *out_end_offset) {
     if (lseek(fd, 0, SEEK_SET) < 0) return -1;
 
-    uint64_t offset = 0;
     uint64_t last_lsn = 0;
 
+    uint64_t next_valid_transaction_offset = 0;
+    bool in_transaction = false;
     while (1) {
         struct WalEntryHeader hdr;
         ssize_t r = read(fd, &hdr, sizeof(hdr));
@@ -104,22 +105,34 @@ static int wal_scan_and_recover(int fd, uint64_t *out_last_lsn, uint64_t *out_en
         }
 
         uint32_t crc = crc32_ieee(payload, (size_t)hdr.length);
-        free(payload);
         if (crc != hdr.crc32) {
+            free(payload);
             break;
         }
-
-        last_lsn = hdr.lsn;
-        offset += (uint64_t)sizeof(hdr) + (uint64_t)hdr.length;
+        Event *event = event_deserialize(payload, (size_t)hdr.length);
+        free(payload);
+        if (!event) {
+            break;
+        }
+        if(event->type == EVENT_BEGIN_TRANSACTION){
+            in_transaction = true;
+        } else if (event->type == EVENT_COMMIT_TRANSACTION){
+            in_transaction = false;
+        }
+        if (!in_transaction) {
+            next_valid_transaction_offset = (off_t)lseek(fd, 0, SEEK_CUR);
+            last_lsn = hdr.lsn;
+        }
+        free(event);
     }
 
     /* truncate to last good offset */
-    if (ftruncate(fd, (off_t)offset) != 0) {
+    if (ftruncate(fd, (off_t)next_valid_transaction_offset) != 0) {
         return -1;
     }
 
     if (out_last_lsn) *out_last_lsn = last_lsn;
-    if (out_end_offset) *out_end_offset = offset;
+    if (out_end_offset) *out_end_offset = next_valid_transaction_offset;
     return 0;
 }
 
@@ -309,15 +322,19 @@ int wal_replay(
         }
         log_debug("[wal_replay] Replaying entry: lsn=%lu, length=%u, entry_count=%d, event{%s, parent_id=%d, node_id=%d, }\n",
              hdr.lsn, hdr.length, entry_count, event_type_to_string(event->type), event->parent_id, event->node_id);
-        int cb = on_payload(event, ctx);
-        free(event);
-
-        if (cb != 0) {// on_payload return non-zero to stop
-            *out_last_lsn = hdr.lsn;
-            log_debug("[wal_replay] Callback returned non-zero, stopping at lsn=%lu\n", hdr.lsn);
-            fprintf(stderr, "[ERROR] [wal_replay] Callback returned non-zero, stopping at lsn=%llu\n", hdr.lsn);
-            return cb;
+        if(event->type == EVENT_BEGIN_TRANSACTION ||
+           event->type == EVENT_COMMIT_TRANSACTION){
+            log_debug("[wal_replay] Skipping transaction control event: type=%d\n", event->type);
+        }else{
+            int cb = on_payload(event, ctx);
+            if (cb != 0) {// on_payload return non-zero to stop
+                *out_last_lsn = hdr.lsn;
+                log_debug("[wal_replay] Callback returned non-zero, stopping at lsn=%lu\n", hdr.lsn);
+                fprintf(stderr, "[ERROR] [wal_replay] Callback returned non-zero, stopping at lsn=%llu\n", hdr.lsn);
+                return cb;
+            }
         }
+        free(event);
         *out_last_lsn = hdr.lsn;
         wal->next_lsn = hdr.lsn + 1;
         entry_count++;
@@ -378,34 +395,34 @@ int wal_replay(
 // }
 
 /**
- * wal_truncate_before() - Delete WAL entries with LSN < lsn
- * 
- * Removes all entries with LSN strictly less than the given LSN value.
- * This is typically called after a checkpoint to remove entries that
- * have been persisted to the tree snapshot.
- * 
- * Entries with LSN >= lsn are preserved and rewritten to the file.
- * 
+ * wal_truncate_commited() - Delete WAL entries persisted by a checkpoint.
+ *
+ * Removes all entries with LSN strictly less than the given reference LSN.
+ * If that LSN falls inside a transaction, it must refer to the last
+ * non-control event in that transaction, and the trailing COMMIT record
+ * is truncated as part of the same atomic unit so the remaining WAL does
+ * not start with a dangling COMMIT.
+ *
  * Returns:
  *   0  - Success
  *   -1 - Error
  */
-int wal_truncate_before(Wal *wal, uint64_t lsn) {
+int wal_truncate_commited(Wal *wal, uint64_t lsn) {
     if (!wal || wal->fd < 0) {
-        log_error("[wal_truncate_before] invalid wal");
+        log_error("[wal_truncate_commited] invalid wal");
         return -1;
     }
 
     if (lsn <= 0) {
-        log_debug("[wal_truncate_before] invalid lsn, skipping");
+        log_debug("[wal_truncate_commited] invalid lsn, skipping");
         return 0;
     }
 
-    log_debug("[wal_truncate_before] Truncating entries with LSN < %"PRIu64, lsn);
+    log_debug("[wal_truncate_commited] Truncating entries with LSN < %"PRIu64, lsn);
 
     // Seek to beginning to read all entries
     if (lseek(wal->fd, 0, SEEK_SET) < 0) {
-        log_error("[wal_truncate_before] initial lseek failed");
+        log_error("[wal_truncate_commited] initial lseek failed");
         return -1;
     }
 
@@ -415,15 +432,19 @@ int wal_truncate_before(Wal *wal, uint64_t lsn) {
 
     int temp_fd = open(temp_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (temp_fd < 0) {
-        log_error("[wal_truncate_before] failed to open temp file");
+        log_error("[wal_truncate_commited] failed to open temp file");
         return -1;
     }
 
-    // Iterate through all entries, copy those with LSN >= lsn
+    // Iterate through all entries and preserve the reference entry and later ones.
     off_t offset = 0;
     off_t new_end_offset = 0;
     int entries_kept = 0;
     int entries_removed = 0;
+
+    bool in_transaction = false;
+    bool waiting_for_commit = false;
+    uint64_t truncated_through_lsn = 0;
 
     while (offset < (off_t)wal->end_offset) {
         struct WalEntryHeader hdr;
@@ -433,22 +454,21 @@ int wal_truncate_before(Wal *wal, uint64_t lsn) {
         }
 
         if (hdr.magic != WAL_MAGIC) {
-            log_debug("[wal_truncate_before] invalid magic at offset %lld", (long long)offset);
+            log_debug("[wal_truncate_commited] invalid magic at offset %lld", (long long)offset);
             break;
         }
 
         if (hdr.length == 0 || hdr.length > (32u * 1024u * 1024u)) {
-            log_error("[wal_truncate_before] invalid entry length: %u", hdr.length);
+            log_error("[wal_truncate_commited] invalid entry length: %u", hdr.length);
             break;
         }
 
         // Total entry size = header + payload
         uint32_t total_entry_size = sizeof(hdr) + hdr.length;
 
-        // Read complete entry header + payload (up to 4MB+ header)
-        char entry_buf[4096 + sizeof(struct WalEntryHeader)];
-        if (total_entry_size > sizeof(entry_buf)) {
-            log_error("[wal_truncate_before] entry too large: %u", total_entry_size);
+        uint8_t *entry_buf = (uint8_t *)malloc(total_entry_size);
+        if (!entry_buf) {
+            log_error("[wal_truncate_commited] failed to allocate %u bytes", total_entry_size);
             close(temp_fd);
             unlink(temp_path);
             return -1;
@@ -456,19 +476,73 @@ int wal_truncate_before(Wal *wal, uint64_t lsn) {
 
         n = pread(wal->fd, entry_buf, total_entry_size, offset);
         if (n != (ssize_t)total_entry_size) {
-            log_error("[wal_truncate_before] failed to read complete entry");
+            log_error("[wal_truncate_commited] failed to read complete entry");
+            free(entry_buf);
             break;
         }
 
-        // Extract LSN from header (already read)
         struct WalEntryHeader *read_hdr = (struct WalEntryHeader *)entry_buf;
         uint64_t entry_lsn = read_hdr->lsn;
+        uint8_t *payload = entry_buf + sizeof(*read_hdr);
+        uint32_t crc = crc32_ieee(payload, (size_t)read_hdr->length);
+        if (crc != read_hdr->crc32) {
+            log_error("[wal_truncate_commited] crc mismatch at lsn=%" PRIu64, entry_lsn);
+            free(entry_buf);
+            break;
+        }
 
-        // If LSN >= lsn, copy to temp file
-        if (entry_lsn >= lsn) {
-            ssize_t written = write(temp_fd, entry_buf, total_entry_size);
-            if (written != (ssize_t)total_entry_size) {
-                log_error("[wal_truncate_before] failed to write to temp file");
+        Event *event = event_deserialize(payload, (size_t)read_hdr->length);
+        if (!event) {
+            log_error("[wal_truncate_commited] failed to deserialize entry at lsn=%" PRIu64, entry_lsn);
+            free(entry_buf);
+            break;
+        }
+
+        bool entry_is_begin = event->type == EVENT_BEGIN_TRANSACTION;
+        bool entry_is_commit = event->type == EVENT_COMMIT_TRANSACTION;
+        bool keep_entry = false;
+
+        if (waiting_for_commit) {
+            if (entry_is_commit) {
+                entries_removed++;
+                truncated_through_lsn = entry_lsn;
+                waiting_for_commit = false;
+            } else {
+                log_error("[wal_truncate_commited] checkpoint LSN %" PRIu64 " is not the last event before COMMIT", lsn);
+                free(event);
+                free(entry_buf);
+                close(temp_fd);
+                unlink(temp_path);
+                return -1;
+            }
+        } else if (entry_lsn < lsn) {
+            entries_removed++;
+            truncated_through_lsn = entry_lsn;
+        } else if (entry_lsn == lsn) {
+            if (entry_is_begin || entry_is_commit) {
+                log_error("[wal_truncate_commited] reference LSN %" PRIu64 " must reference a non-control event", lsn);
+                free(event);
+                free(entry_buf);
+                close(temp_fd);
+                unlink(temp_path);
+                return -1;
+            }
+
+            if (in_transaction) {
+                keep_entry = true;
+                waiting_for_commit = true;
+            } else {
+                keep_entry = true;
+            }
+        } else {
+            keep_entry = true;
+        }
+
+        if (keep_entry) {
+            if (write_full(temp_fd, entry_buf, total_entry_size) != 0) {
+                log_error("[wal_truncate_commited] failed to write to temp file");
+                free(event);
+                free(entry_buf);
                 close(temp_fd);
                 unlink(temp_path);
                 return -1;
@@ -476,18 +550,48 @@ int wal_truncate_before(Wal *wal, uint64_t lsn) {
             new_end_offset += total_entry_size;
             entries_kept++;
         } else {
-            entries_removed++;
-            log_debug("[wal_truncate_before] Removing entry with LSN %"PRIu64 " < %"PRIu64, entry_lsn, lsn);
+            log_debug("[wal_truncate_commited] Removing entry with LSN %"PRIu64, entry_lsn);
         }
 
+        if (entry_is_begin) {
+            if (in_transaction) {
+                log_error("[wal_truncate_commited] nested transaction begin at lsn=%" PRIu64, entry_lsn);
+                free(event);
+                free(entry_buf);
+                close(temp_fd);
+                unlink(temp_path);
+                return -1;
+            }
+            in_transaction = true;
+        } else if (entry_is_commit) {
+            if (!in_transaction && !waiting_for_commit) {
+                log_error("[wal_truncate_commited] unexpected commit at lsn=%" PRIu64, entry_lsn);
+                free(event);
+                free(entry_buf);
+                close(temp_fd);
+                unlink(temp_path);
+                return -1;
+            }
+            in_transaction = false;
+        }
+
+        free(event);
+        free(entry_buf);
         offset += total_entry_size;
+    }
+
+    if (waiting_for_commit) {
+        log_error("[wal_truncate_commited] checkpoint LSN %" PRIu64 " ends inside an unclosed transaction", lsn);
+        close(temp_fd);
+        unlink(temp_path);
+        return -1;
     }
 
     close(temp_fd);
 
     // Replace original file with temp file
     if (rename(temp_path, wal->path) < 0) {
-        log_error("[wal_truncate_before] rename failed");
+        log_error("[wal_truncate_commited] rename failed");
         unlink(temp_path);
         return -1;
     }
@@ -496,15 +600,16 @@ int wal_truncate_before(Wal *wal, uint64_t lsn) {
     if (wal->fd >= 0) close(wal->fd);
     wal->fd = open(wal->path, O_RDWR | O_CREAT | O_APPEND, 0644);
     if (wal->fd < 0) {
-        log_error("[wal_truncate_before] failed to reopen wal file");
+        log_error("[wal_truncate_commited] failed to reopen wal file");
         return -1;
     }
 
     // Update state
     wal->end_offset = (uint64_t)new_end_offset;
-    wal->last_sync_lsn = lsn - 1;
+    wal->last_sync_lsn = truncated_through_lsn;
+    wal->checkpoint_lsn = lsn;
 
-    log_debug("[wal_truncate_before] Success: removed %d entries, kept %d entries, new end_offset=%"PRIu64,
+    log_debug("[wal_truncate_commited] Success: removed %d entries, kept %d entries, new end_offset=%"PRIu64,
               entries_removed, entries_kept, wal->end_offset);
     return 0;
 }

@@ -9,8 +9,15 @@ URI_TEMPLATE_SRCS := test_uri_template.c ../src/utils/uri_template.c
 URI_TEMPLATE_OBJS := $(URI_TEMPLATE_SRCS:.c=.o)
 URI_TEMPLATE_TARGET := uri_template_test
 
-TARGETS := $(QUEUE_TARGET) $(URI_TEMPLATE_TARGET)
-ALL_OBJS := $(QUEUE_OBJS) $(URI_TEMPLATE_OBJS)
+WAL_SRCS := test_wal_scan_recover.c \
+	../src/wal/wal.c \
+	../src/utils/crc.c \
+	../src/utils/logging.c
+WAL_OBJS := $(WAL_SRCS:.c=.o)
+WAL_TARGET := wal_scan_recover_test
+
+TARGETS := $(QUEUE_TARGET) $(URI_TEMPLATE_TARGET) $(WAL_TARGET)
+ALL_OBJS := $(QUEUE_OBJS) $(URI_TEMPLATE_OBJS) $(WAL_OBJS)
 
 all: $(TARGETS)
 
@@ -20,12 +27,16 @@ $(QUEUE_TARGET): $(QUEUE_OBJS)
 $(URI_TEMPLATE_TARGET): $(URI_TEMPLATE_OBJS)
 	$(CC) $(CFLAGS) $^ -o $@
 
+$(WAL_TARGET): $(WAL_OBJS)
+	$(CC) $(CFLAGS) $^ -o $@
+
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 test: all
 	./$(QUEUE_TARGET)
 	./$(URI_TEMPLATE_TARGET)
+	./$(WAL_TARGET)
 
 clean:
 	rm -f $(ALL_OBJS) $(TARGETS)

@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <time.h>
 
 #include "../wal/wal.h"
 #include "../ui/ui.h"
@@ -57,7 +58,6 @@ static TreeNode app_metadata_key_node(AppState *app, const char *key) {
         child = tree_node_next_sibling(ov, child);
     }
     Event *event = event_create_add_first_child(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(metanode),
         key
     );
@@ -90,13 +90,11 @@ static TreeNode app_metadata_value_node(AppState *app, const char *key){
     }
 
     Event *event = event_create_add_first_child(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(metanode),
         key
     );
     operate_commit_event(app->operate, event);
     Event *event_value = event_create_add_first_child(
-        app->tree_overlay->last_applied_lsn + 1,
         event->new_node_id,
         ""
     );
@@ -126,7 +124,6 @@ static TreeNode app_metadata_dict_keynode(AppState *app, TreeNode dict, const ch
     }
 
     Event *event = event_create_add_first_child(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(dict),
         key
     );
@@ -154,7 +151,6 @@ static int app_metadata_dict_set(AppState *app, TreeNode dict, const char *key, 
 
     if(tree_node_is_null(value_node)){ // insert
         Event *event = event_create_add_first_child(
-            app->tree_overlay->last_applied_lsn + 1,
             tree_node_id(keynode),
             value
         );
@@ -163,7 +159,6 @@ static int app_metadata_dict_set(AppState *app, TreeNode dict, const char *key, 
         return r;
     }else{// update
         Event *event = event_create_update_text(
-            app->tree_overlay->last_applied_lsn + 1,
             tree_node_id(value_node),
             value
         );
@@ -234,6 +229,9 @@ static TreeNode node_metadata_ensure_key(AppState *app, TreeNode node, const cha
     return app_metadata_dict_keynode(app,  meta_node, key);
 }
 
+/**
+ * return: TREE_NODE_NULL if not found
+ */
 static TreeNode node_metadata_get(AppState *app, TreeNode node, const char *key){
     if(tree_node_is_null(node)){
         return (TreeNode){.kind = TREE_NODE_NULL};
@@ -263,7 +261,6 @@ static TreeNode ensure_node_metadata(AppState *app, TreeNode node){
     TreeNode meta_node = tree_node_first_child(app->tree_overlay, node);
     if(tree_node_is_null(meta_node) || strcmp(tree_node_text(meta_node), CONTEXT_META_NAME) != 0){
         Event *event = event_create_add_first_child(
-            app->tree_overlay->last_applied_lsn + 1,
             tree_node_id(node),
             CONTEXT_META_NAME
         );
@@ -480,7 +477,6 @@ static void handle_add_child_node(AppState *app) {
     bool is_current_task = app_is_current_task(app, current);
 
     Event *event = event_create_add_first_child(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current),
         "Unnamed Child"
     );
@@ -498,7 +494,6 @@ static void handle_add_child_node(AppState *app) {
         static char current_task_id_str[32];
         sprintf(current_task_id_str, "%llu", current_task_node_id);
         event = event_create_update_text(
-            app->tree_overlay->last_applied_lsn + 1,
             tree_node_id(context_current_task_value),
             current_task_id_str
         );
@@ -510,7 +505,6 @@ static void handle_add_child_node(AppState *app) {
         event_destroy(event);
         TreeNode app_current_task_value_node = app_metadata_value_node(app, APP_META_CURRENT_TASK); 
         event = event_create_update_text(
-            app->tree_overlay->last_applied_lsn + 1,
             tree_node_id(app_current_task_value_node),
             current_task_id_str
         );
@@ -525,6 +519,7 @@ static void handle_add_child_node(AppState *app) {
 
 
 void handle_edit_node(AppState *app);
+static void handle_as_current_task(AppState *app, TreeNode node);
 
 void handle_add_child_to_tail(AppState *app) {
     UiContext *ui = app->ui;
@@ -535,7 +530,6 @@ void handle_add_child_to_tail(AppState *app) {
     bool is_current_task = app_is_current_task(app, current);
 
     Event *event = event_create_add_last_child(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current),
         "Unnamed Child"
     );
@@ -549,34 +543,7 @@ void handle_add_child_to_tail(AppState *app) {
 
     const char *current_text = tree_node_text(ui->current_node);
     if(is_current_task && current_text != NULL && current_text[0] != '.') {
-        // update current task
-        uint64_t current_task_node_id = tree_node_id(ui->current_node);
-        TreeNode context_current_task_value = app_metadata_value_node(app,  APP_META_CURRENT_TASK);
-        static char current_task_id_str[32];
-        sprintf(current_task_id_str, "%llu", current_task_node_id);
-        event = event_create_update_text(
-            app->tree_overlay->last_applied_lsn + 1,
-            tree_node_id(context_current_task_value),
-            current_task_id_str
-        );
-        int r = operate_commit_event(app->operate, event);
-        if(r != 0){
-            log_error("Failed to update current task metadata");
-            return;
-        }
-        event_destroy(event);
-        TreeNode app_current_task_value_node = app_metadata_value_node(app, APP_META_CURRENT_TASK); 
-        event = event_create_update_text(
-            app->tree_overlay->last_applied_lsn + 1,
-            tree_node_id(app_current_task_value_node),
-            current_task_id_str
-        );
-        int r2 = operate_commit_event(app->operate, event);
-        if(r2 != 0){
-            log_error("Failed to update app current task metadata");
-            return;
-        }
-        event_destroy(event);
+        handle_as_current_task(app, ui->current_node);
     }
 }
 
@@ -585,13 +552,11 @@ static void handle_add_sibling_above(AppState *app) {
     UiContext *ui = app->ui;
     TreeNode current = ui->current_node;
     
-    uint64_t lsn = app->tree_overlay->last_applied_lsn + 1;
     TreeNode parent = tree_node_parent(app->tree_overlay, current);
     TreeNode first_child = tree_node_first_child(app->tree_overlay, parent);
     Event *event;
     if(tree_node_id(current) == tree_node_id(first_child)){
         event = event_create_add_first_child(
-            lsn,
             tree_node_id(parent),
             "Unnamed Sibling"
         );
@@ -602,7 +567,6 @@ static void handle_add_sibling_above(AppState *app) {
             return;
         }
         event = event_create_add_sibling(
-            lsn,
             tree_node_id(prev_sibling),
             "Unnamed Sibling"
         );
@@ -621,9 +585,7 @@ static void handle_add_sibling_below(AppState *app) {
     UiContext *ui = app->ui;
     TreeNode current = ui->current_node;
     
-    uint64_t lsn = app->tree_overlay->last_applied_lsn + 1;
     Event *event = event_create_add_sibling(
-        lsn,
         tree_node_id(current),
         "Unnamed Sibling"
     );
@@ -648,7 +610,6 @@ void handle_edit_node(AppState *app){
         return;
     }
     Event *event = event_create_update_text(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current),
         name
     );
@@ -676,7 +637,6 @@ void handle_mark_as_definition(AppState *app) {
     sprintf(new_name, "[%s]", old_name);
     
     Event *event = event_create_update_text(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current),
         new_name
     );
@@ -703,7 +663,6 @@ void handle_unmark_as_definition(AppState *app) {
     strncpy(new_name, old_name + 1, old_name_len - 2);
     
     Event *event = event_create_update_text(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current),
         new_name
     );
@@ -727,7 +686,6 @@ static void handle_append_node_text(AppState *app) {
         return;
     }
     Event *event = event_create_update_text(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current),
         new_name
     );
@@ -749,7 +707,6 @@ void handle_join_sibling_as_child(AppState *app) {
     if(!tree_node_is_null(next_sibling)){
         TreeNode next_next_sibling = tree_node_next_sibling(app->tree_overlay, next_sibling);
         Event *event = event_create_move_to_children_tail(
-            app->tree_overlay->last_applied_lsn + 1,
             tree_node_id(next_sibling),
             tree_node_id(current),
             tree_node_id(parent),
@@ -785,7 +742,6 @@ void handle_unfold_node(AppState *app) {
     }
 
     Event *event = event_create_expand_node(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current)
     );
     int r = operate_commit_event(app->operate, event);
@@ -807,7 +763,6 @@ void handle_fold_children(AppState *app) {
             continue;
         }
         Event *event = event_create_collapse_node(
-            app->tree_overlay->last_applied_lsn + 1,
             tree_node_id(child)
         );
         int r = operate_commit_event(app->operate, event);
@@ -818,7 +773,6 @@ void handle_fold_children(AppState *app) {
     }
     
     Event *unfold_event = event_create_expand_node(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current)
     );
     int r0 = operate_commit_event(app->operate, unfold_event);
@@ -975,7 +929,6 @@ void handle_paste_as_child(AppState *app) {
 
             TreeNode new_next_sibling = (TreeNode){ .kind = TREE_NODE_NULL }; // insert as last child
             Event *event = event_create_move_subtree(
-                app->tree_overlay->last_applied_lsn + 1,
                 tree_node_id(app->operate->clipboard), // node to move
                 tree_node_id(old_parent),
                 tree_node_id(old_next_sibling),
@@ -995,7 +948,6 @@ void handle_paste_as_child(AppState *app) {
             }
             TreeNode copied_node = tree_node_first_child(app->tree_overlay, recycle_bin);
             Event *event = event_create_move_subtree(
-                app->tree_overlay->last_applied_lsn + 1,
                 tree_node_id(copied_node), // node to move
                 tree_node_id(recycle_bin),
                 tree_node_id(tree_node_next_sibling(app->tree_overlay, copied_node)),
@@ -1035,7 +987,6 @@ void handle_paste_as_sibling_below(AppState *app) {
 
             TreeNode new_next_sibling = tree_node_next_sibling(app->tree_overlay, current);
             Event *event = event_create_move_subtree(
-                app->tree_overlay->last_applied_lsn + 1,
                 tree_node_id(app->operate->clipboard), // node to move
                 tree_node_id(old_parent),
                 tree_node_id(old_next_sibling),
@@ -1061,7 +1012,6 @@ void handle_paste_as_sibling_below(AppState *app) {
             TreeNode copied_node = tree_node_first_child(app->tree_overlay, recycle_bin);
             TreeNode new_next_sibling = tree_node_next_sibling(app->tree_overlay, current);
             Event *event = event_create_move_subtree(
-                app->tree_overlay->last_applied_lsn + 1,
                 tree_node_id(copied_node), // node to move
                 tree_node_id(recycle_bin),
                 tree_node_id(tree_node_next_sibling(app->tree_overlay, copied_node)),
@@ -1100,7 +1050,6 @@ void handle_paste_as_sibling_above(AppState *app) {
             TreeNode old_next_sibling = tree_node_next_sibling(app->tree_overlay, content_node);
             TreeNode new_next_sibling = current; // insert before current
             Event *event = event_create_move_subtree(
-                app->tree_overlay->last_applied_lsn + 1,
                 tree_node_id(app->operate->clipboard), // node to move
                 tree_node_id(old_parent),
                 tree_node_id(old_next_sibling),
@@ -1126,7 +1075,6 @@ void handle_paste_as_sibling_above(AppState *app) {
             TreeNode copied_node = tree_node_first_child(app->tree_overlay, recycle_bin);
             TreeNode new_next_sibling = current; // insert before current
             Event *event = event_create_move_subtree(
-                app->tree_overlay->last_applied_lsn + 1,
                 tree_node_id(copied_node), // node to move
                 tree_node_id(recycle_bin),
                 tree_node_id(tree_node_next_sibling(app->tree_overlay, copied_node)),
@@ -1193,7 +1141,6 @@ void handle_cut_subtree(AppState *app) {
     TreeNode new_parent = app_metadata_key_node(app, "recycle_bin");
     TreeNode new_next_sibling = tree_node_first_child(app->tree_overlay, new_parent);
     Event *event = event_create_move_subtree(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current),
         tree_node_id(old_parent),
         tree_node_id(old_next_sibling),
@@ -1233,7 +1180,6 @@ void handle_cut_node(AppState *app){
         TreeNode new_parent = tree_node_parent(app->tree_overlay, curr);
         TreeNode new_next_sibling = curr;
         Event *event = event_create_move_subtree(
-            app->tree_overlay->last_applied_lsn + 1,
             tree_node_id(child),
             tree_node_id(old_parent),
             tree_node_id(old_next_sibling),
@@ -1297,7 +1243,6 @@ static void handle_join_text_without_space(AppState *app) {
     strcpy(joined_text, current_text);
     strcat(joined_text, next_text);
     Event *edit_event = event_create_update_text(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current),
         joined_text
     );
@@ -1316,7 +1261,6 @@ static void handle_join_text_without_space(AppState *app) {
     TreeNode new_parent = app_metadata_key_node(app, "recycle_bin");
     TreeNode new_next_sibling = tree_node_first_child(app->tree_overlay, new_parent);
     Event *delete_event = event_create_move_subtree(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(next_sibling),
         tree_node_id(old_parent),
         tree_node_id(old_next_sibling),
@@ -1411,7 +1355,6 @@ static void handle_move_focus_right(AppState *app) {
     TreeNode current = app->ui->current_node;
     if(tree_node_collapsed(current)){
         Event *event = event_create_expand_node(
-            app->tree_overlay->last_applied_lsn + 1,
             tree_node_id(current)
         );
         int r = operate_commit_event(app->operate, event);
@@ -1427,7 +1370,6 @@ static void handle_move_to_child_position(AppState *app, int position) {
     log_debug("[handle_move_to_child_position] Before: current_node id=%lu", tree_node_id(app->ui->current_node));
     if(tree_node_collapsed(app->ui->current_node)){
         Event *event = event_create_expand_node(
-            app->tree_overlay->last_applied_lsn + 1,
             tree_node_id(app->ui->current_node)
         );
         int r = operate_commit_event(app->operate, event);
@@ -1820,6 +1762,15 @@ bool tree_node_not_started_with_dot(TreeNode node, void *ctx) {
     const char *text = tree_node_text(node);
     return text[0] != '.';
 }
+
+/**
+ * check: is root task
+ * do finish:
+ *      mark end_time in metadata
+ *      move to finished_tasks
+ * find: next task
+ * set current: 
+ */
 static void handle_finish_task(AppState *app){
     handle_move_focus_current_task(app);
     TreeNode current = app->ui->current_node;
@@ -1829,6 +1780,12 @@ static void handle_finish_task(AppState *app){
         ui_info_set_message(app->ui, "This is the root task, Enjoy your life!");
         return;
     }
+    char time_str[32];
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    strftime(time_str, sizeof(time_str), "%Y-%m-%dT%H:%M:%S%z", tm_info);
+    node_metadata_set(app, current, "end_time__", time_str); // align with start_time
+
     TreeNode next_current = tree_node_next_sibling_with_filter(
         app->tree_overlay, current, tree_node_not_started_with_dot, NULL);
     if(tree_node_is_null(next_current)){
@@ -1846,7 +1803,6 @@ static void handle_finish_task(AppState *app){
     TreeNode parent = tree_node_parent(app->tree_overlay, current);
     TreeNode finished_tasks = node_metadata_ensure_key(app, parent, "finished_tasks");
     Event *event = event_create_move_subtree(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current),
         tree_node_id(parent),
         tree_node_id(tree_node_next_sibling(app->tree_overlay, current)),
@@ -1860,20 +1816,8 @@ static void handle_finish_task(AppState *app){
     }
 
     next_current = task_find_current(app, next_current);
-    app->ui->current_node = next_current;
-    TreeNode current_task_value = app_metadata_value_node(app, APP_META_CURRENT_TASK);
-    static char current_task_id_str[32];
-    sprintf(current_task_id_str, "%llu", tree_node_id(next_current));
-    event = event_create_update_text(
-        app->tree_overlay->last_applied_lsn + 1,
-        tree_node_id(current_task_value),
-        current_task_id_str
-    );
-    r = operate_commit_event(app->operate, event);
-    if(r != 0){
-        log_warn("Failed to update current task after finishing task");
-    }
-
+    handle_as_current_task(app, next_current);
+    
     log_info("Finished task '%s'", task_name);
     ui_info_set_message(app->ui, "Finished task '%s'", task_name);
 
@@ -1914,24 +1858,29 @@ static TreeNode task_find_next(AppState *app, TreeNode task_node) {
     return task_find_current(app, sibling);
 }
 
+static bool is_task_stack_task(TreeOverlay *tree_overlay, TreeNode node) {
+    if(tree_node_is_null(node)){
+        return false;
+    }
+    TreeNode parent = tree_node_parent(tree_overlay, node);
+    while(!tree_node_is_null(parent)){
+        if(strcmp(tree_node_text(parent), APP_TASK_STACK_NAME) == 0){
+            return true;
+        } 
+        else if(strcmp(tree_node_text(parent), CONTEXT_META_NAME) == 0){ 
+            return false;
+        }
+        parent = tree_node_parent(tree_overlay, parent);
+    }
+    return false;
+}
+
 static void handle_next_task(AppState *app) {
+    if(!is_task_stack_task(app->tree_overlay, app->ui->current_node)){
+        handle_move_focus_current_task(app);
+    }
     TreeNode sibling = task_find_next(app, app->ui->current_node);    
     update_current_with_history(app, sibling);
-    TreeNode current_task_value = app_metadata_value_node(app, APP_META_CURRENT_TASK);
-    static char current_task_id_str[32];
-    sprintf(current_task_id_str, "%llu", tree_node_id(sibling));
-    Event *event = event_create_update_text(
-        app->tree_overlay->last_applied_lsn + 1,
-        tree_node_id(current_task_value),
-        current_task_id_str
-    );
-    int r = operate_commit_event(app->operate, event);
-    if(r != 0){
-        log_warn("Failed to update current task after finishing task");
-    }
-    event_destroy(event);
-    log_info("Moved to next task '%s'", tree_node_text(sibling));
-    ui_info_set_message(app->ui, "Moved to next task '%s'", tree_node_text(sibling));
 }
 
 static TreeNode task_find_prev(AppState *app, TreeNode task_node) {
@@ -1963,7 +1912,6 @@ static void handle_prev_task(AppState *app) {
     static char current_task_id_str[32];
     sprintf(current_task_id_str, "%llu", tree_node_id(prev_task));
     Event *event = event_create_update_text(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current_task_value),
         current_task_id_str
     );
@@ -1976,20 +1924,47 @@ static void handle_prev_task(AppState *app) {
     ui_info_set_message(app->ui, "Moved to previous task '%s'", tree_node_text(prev_task));
 }
 
-static void handle_as_current_task(AppState *app) {
-    TreeNode current = app->ui->current_node;
+static void handle_as_current_task(AppState *app, TreeNode node) {
+    TreeNode current = node;
     const char *task_name = tree_node_text(current);
     TreeNode current_task_value = app_metadata_value_node(app, APP_META_CURRENT_TASK);
+
+    int r = operate_begin_transaction(app->operate);
+    if(r != 0){
+        log_warn("Failed to begin transaction for setting current task");
+        return;
+    }
+
+    TreeNode begin_time_node = node_metadata_get(app, current, "begin_time");
+    if(tree_node_is_null(begin_time_node)){
+        // datetime format 2026-04-01T23:30:45+08:00
+        char begin_time_str[32];
+        time_t now = time(NULL);
+        struct tm *tm_info = localtime(&now);
+        strftime(begin_time_str, sizeof(begin_time_str), "%Y-%m-%dT%H:%M:%S%z", tm_info);
+        node_metadata_set(app, current, "begin_time", begin_time_str);
+    }
+
+
     static char current_task_id_str[32];
     sprintf(current_task_id_str, "%llu", tree_node_id(current));
     Event *event = event_create_update_text(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current_task_value),
         current_task_id_str
     );
-    int r = operate_commit_event(app->operate, event);
+    r = operate_commit_event(app->operate, event);
     if(r != 0){
         log_warn("Failed to update current task");
+    }
+    event_destroy(event);
+
+    r = operate_commit_transaction(app->operate);
+    if(r != 0){
+        log_error("Failed to commit transaction for setting current task");
+        exit(1);
+    }
+    if(tree_node_id(current) != tree_node_id(app->ui->current_node)){
+        update_current_with_history(app, current);
     }
     ui_info_set_message(app->ui, "Set current task to '%s'", task_name);
 }
@@ -2056,7 +2031,6 @@ TreeNode app_ensure_task_stack(AppState *app) {
     }
     TreeNode first_child = tree_node_first_child(app->tree_overlay, root);
     Event *event = event_create_add_sibling(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(first_child),
         APP_TASK_STACK_NAME
     );
@@ -2075,7 +2049,6 @@ void handle_add_new_task(AppState *app) {
         return;
     }
     Event *event = event_create_add_first_child(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(task_stack),
         "New Task"
     );
@@ -2093,7 +2066,6 @@ void handle_add_new_task(AppState *app) {
 
     TreeNode current_task_value = app_metadata_value_node(app, APP_META_CURRENT_TASK);
     event = event_create_update_text(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(current_task_value),
         current_task_id_str
     );
@@ -2132,7 +2104,6 @@ static void handle_command_mode(AppState *app) {
             break;
         case CMD_SET_FLAG_HIDDEN:{
             Event *event = event_create_set_hidden(
-                app->tree_overlay->last_applied_lsn + 1,
                 tree_node_id(app->ui->current_node),
                 true
             );
@@ -2144,7 +2115,6 @@ static void handle_command_mode(AppState *app) {
         }
         case CMD_UNSET_FLAG_HIDDEN:{
             Event *event = event_create_set_hidden(
-                app->tree_overlay->last_applied_lsn + 1,
                 tree_node_id(app->ui->current_node),
                 false
             );
@@ -2171,7 +2141,6 @@ static void handle_command_mode(AppState *app) {
         }
         case CMD_SET_FLAG_SHOW_HIDDEN_CHILDREN:{
             Event *event = event_create_set_show_hidden_children(
-                app->tree_overlay->last_applied_lsn + 1,
                 tree_node_id(app->ui->current_node),
                 true
             );
@@ -2183,7 +2152,6 @@ static void handle_command_mode(AppState *app) {
         }
         case CMD_UNSET_FLAG_SHOW_HIDDEN_CHILDREN:{
             Event *event = event_create_set_show_hidden_children(
-                app->tree_overlay->last_applied_lsn + 1,
                 tree_node_id(app->ui->current_node),
                 false
             );
@@ -2778,7 +2746,6 @@ static TreeNode app_ensure_metadata_node(AppState *app) {
     }
     // Create metadata node
     Event *event = event_create_add_first_child(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(root_node_metadata),
         ".metadata"
     );
@@ -2802,7 +2769,6 @@ static void app_save_metadata(AppState *app, const char *key, const char *value)
                 return;
             }
             Event *event = event_create_update_text(
-                app->tree_overlay->last_applied_lsn + 1,
                 tree_node_id(value_node),
                 value
             );
@@ -2815,7 +2781,6 @@ static void app_save_metadata(AppState *app, const char *key, const char *value)
         child = tree_node_next_sibling(ov, child);
     }
     Event *event = event_create_add_first_child(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(metanode),
         key
     );
@@ -2823,7 +2788,6 @@ static void app_save_metadata(AppState *app, const char *key, const char *value)
     TreeNode kv_node = tree_find_by_id(ov, event->new_node_id);
     event_destroy(event);
     Event *event_value = event_create_add_first_child(
-        app->tree_overlay->last_applied_lsn + 1,
         tree_node_id(kv_node),
         value
     );
@@ -2864,8 +2828,8 @@ void app_save(AppState *app) {
     // For now, just handle WAL truncation
     uint64_t last_lsn = app->tree_overlay->last_applied_lsn;
     
-    // Truncate WAL to remove persisted entries (keep entries with LSN > last_lsn)
-    if (wal_truncate_before(app->wal, last_lsn + 1) != 0) {
+    // Truncate WAL records already covered by the checkpoint.
+    if (wal_truncate_commited(app->wal, last_lsn) != 0) {
         log_error("Failed to truncate WAL");
         return;
     }
@@ -3137,7 +3101,7 @@ void app_apply_event(AppState *app, UserOperation uo) {
         handle_prev_task(app);
         break;
     case UO_AS_CURRENT_TASK:
-        handle_as_current_task(app);
+        handle_as_current_task(app, app->ui->current_node);
         break;
 
     // external resources

@@ -33,16 +33,9 @@ typedef enum {
     EVENT_SET_FLAG_HIDDEN, // set/unset hidden flag
     EVENT_SET_FLAG_SHOW_HIDDEN_CHILDREN, // set/unset show_hidden_children flag
     
-    // Navigation events (UI layer, don't modify data)
-    EVENT_NAV_MOVE_DOWN,    // j - move to next sibling
-    EVENT_NAV_MOVE_UP,      // k - move to previous sibling
-    EVENT_NAV_MOVE_LEFT,    // h - move to parent
-    EVENT_NAV_MOVE_RIGHT,    // l - move to first child
-    EVENT_SCROLL_VIEW,        // Scroll view event
-
-    EVENT_FOLD_ALL_CHILDREN,    // Fold all children of current node
-
-    
+    // transaction control
+    EVENT_BEGIN_TRANSACTION,
+    EVENT_COMMIT_TRANSACTION
 } EventType;
 
 // event struct

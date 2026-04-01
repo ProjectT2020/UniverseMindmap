@@ -36,6 +36,6 @@ int wal_replay(
 /**
  * truncate all record with lsn < given lsn
  */
-int wal_truncate_before(Wal *wal, uint64_t lsn);
+int wal_truncate_commited(Wal *wal, uint64_t lsn);
 
 #endif // WAL_H

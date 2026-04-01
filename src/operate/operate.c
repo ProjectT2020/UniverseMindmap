@@ -39,8 +39,32 @@ void operate_destroy(Operate *operate) {
 /**
  * return: 0=success, -1=failure
  */
+int operate_begin_transaction(Operate *operate) {
+    if (!operate) return -1;
+    Event *e = event_create_begin_transaction();
+    int r = wal_append(operate->wal, e);
+    event_destroy(e);
+    return r;
+}
+
+/**
+ * return: 0=success, -1=failure
+ */
+int operate_commit_transaction(Operate *operate) {
+    if (!operate) return -1;
+    Event *e = event_create_commit_transaction();
+    int r = wal_append(operate->wal, e);
+    event_destroy(e);
+    return r;
+}
+
+/**
+ * return: 0=success, -1=failure
+ */
 int operate_commit_event(Operate *operate, Event *e) {
     if (!operate || !e) return -1;
+    // fill in LSN 
+    e->lsn = operate->wal->next_lsn;
     // write WAL entry here if needed (omitted for brevity)
     
     // Apply the event to the tree overlay FIRST
@@ -69,10 +93,7 @@ int operate_commit_event(Operate *operate, Event *e) {
 
 int operate_fold_node(Operate *operate, TreeNode node){
     if (!operate) return -1;
-    Event *event = event_create_collapse_node(
-        operate->overlay->last_applied_lsn + 1,
-        tree_node_id(node)
-    );
+    Event *event = event_create_collapse_node(tree_node_id(node));
     int r = operate_commit_event(operate, event);
     if (r != 0) {
         log_warn("Fold/unfold operation failed");
@@ -150,7 +171,6 @@ int operate_delete_subtree(Operate *operate, TreeNode node){
     TreeNode parent = tree_node_parent(operate->overlay, node);
     TreeNode sibling = tree_node_next_sibling(operate->overlay, node);
     Event *e = event_create_delete_node(
-        operate->overlay->last_applied_lsn + 1,
         tree_node_id(node),
         tree_node_id(parent),
         tree_node_id(sibling),
@@ -166,7 +186,7 @@ int operate_delete_subtree(Operate *operate, TreeNode node){
 
 int operate_copy_paste_as_first_child(Operate *operate, TreeNode parent){
     TreeNode first_child = tree_node_first_child(operate->overlay, parent);
-    Event *e = event_create_copy_subtree( operate->overlay->last_applied_lsn + 1,
+    Event *e = event_create_copy_subtree(
         tree_node_id(operate->clipboard), // source node id
         tree_node_id(parent), // new parent id 
         tree_node_id(first_child) // new next sibling id (first child)
@@ -182,7 +202,7 @@ int operate_copy_paste_as_first_child(Operate *operate, TreeNode parent){
 }
 
 int operate_copy_paste_as_last_child(Operate *operate, TreeNode parent){
-    Event *e = event_create_copy_subtree( operate->overlay->last_applied_lsn + 1,
+    Event *e = event_create_copy_subtree(
         tree_node_id(operate->clipboard), // source node id
         tree_node_id(parent), // new parent id 
         0 // next sibling id = 0 means append as last child
@@ -304,7 +324,6 @@ int operate_import_mindmap_from_txt(Operate *operate, const char *filepath){
                 return -1;
             }
             Event *e = event_create_add_last_child(
-                operate->overlay->last_applied_lsn + 1,
                 tree_node_id((TreeNode){ .kind = TREE_NODE_MUTABLE, .mut = parent }),
                 text
             );
@@ -330,7 +349,6 @@ int operate_import_mindmap_from_txt(Operate *operate, const char *filepath){
                 return -1;
             }
             Event *e = event_create_add_sibling(
-                operate->overlay->last_applied_lsn + 1,
                 tree_node_id((TreeNode){ .kind = TREE_NODE_MUTABLE, .mut = sibling }),
                 text
             );
@@ -594,7 +612,6 @@ int operate_edit_node(Operate *operate, TreeNode node){
         line[len - 1] = '\0';
     }
     Event *e = event_create_update_text(
-        operate->overlay->last_applied_lsn + 1,
         tree_node_id(node),
         line
     );
@@ -624,14 +641,12 @@ int operate_edit_node(Operate *operate, TreeNode node){
             if(indent == prev_indent){
                 // add sibling
                 e = event_create_add_sibling(
-                    operate->overlay->last_applied_lsn + 1,
                     tree_node_id(current),
                     text
                 );
             }else if(indent == prev_indent + 1){
                 // add child
                 e = event_create_add_last_child(
-                    operate->overlay->last_applied_lsn + 1,
                     tree_node_id(current),
                     text
                 );
@@ -646,7 +661,6 @@ int operate_edit_node(Operate *operate, TreeNode node){
                     }
                 }
                 e = event_create_add_sibling(
-                    operate->overlay->last_applied_lsn + 1,
                     tree_node_id(ancestor),
                     text
                 );
@@ -708,10 +722,7 @@ int operate_reduce_folding(Operate *operate, TreeNode current, int fold_level){
         if(depth >= fold_level){
             // set fold
             if(!tree_node_is_collapsed(node) && !tree_node_is_null(tree_node_first_child(operate->overlay, node))){
-                Event *event = event_create_collapse_node(
-                    operate->overlay->last_applied_lsn + 1,
-                    tree_node_id(node)
-                );
+                Event *event = event_create_collapse_node(tree_node_id(node));
                 int r = operate_commit_event(operate, event);
                 if(r != 0){
                     log_warn("operate_reduce_folding: Failed to commit COLLAPSE_NODE event for node id=%" PRIu64, tree_node_id(node));
@@ -721,10 +732,7 @@ int operate_reduce_folding(Operate *operate, TreeNode current, int fold_level){
         }else{
             // set unfold
             if(tree_node_is_collapsed(node) && meta_node_id != tree_node_id(node)){
-                Event *event = event_create_expand_node(
-                    operate->overlay->last_applied_lsn + 1,
-                    tree_node_id(node)
-                );
+                Event *event = event_create_expand_node(tree_node_id(node));
                 int r = operate_commit_event(operate, event);
                 if(r != 0){
                     log_warn("operate_reduce_folding: Failed to commit EXPAND_NODE event for node id=%" PRIu64, tree_node_id(node));
@@ -765,10 +773,7 @@ int operate_fold_more(Operate *operate, TreeNode current, int fold_level){
             && !tree_node_is_null(tree_node_first_child(operate->overlay, node))
             && meta_node_id != tree_node_id(node)
             ){
-            Event *event = event_create_collapse_node(
-                operate->overlay->last_applied_lsn + 1,
-                tree_node_id(node)
-            );
+            Event *event = event_create_collapse_node(tree_node_id(node));
             int r = operate_commit_event(operate, event);
             if(r != 0){
                 log_warn("operate_fold_more: Failed to commit COLLAPSE_NODE event for node id=%" PRIu64, tree_node_id(node));

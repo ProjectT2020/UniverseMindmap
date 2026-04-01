@@ -35,6 +35,8 @@ Operate* operate_create(Wal *wal, TreeOverlay *overlay);
 void operate_destroy(Operate *operate);
 
 int operate_commit_event(Operate *operate, Event *e);
+int operate_commit_transaction(Operate *operate);
+int operate_begin_transaction(Operate *operate);
 
 int operate_undo(Operate *operate);
 int operate_redo(Operate *operate);
