@@ -75,7 +75,7 @@ void handle_focus_down(AppState *app);
 void handle_delete_node(AppState *app);
 void handle_delete_subtree(AppState *app);
 
-void handle_edit_node(AppState *app);
+void handle_edit_node(AppState *app, TreeNode node);
 
 void handle_undo(AppState *app);
 void handle_redo(AppState *app);

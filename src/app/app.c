@@ -43,7 +43,7 @@ static const char *APP_TASK_STACK_NAME = "[Task Stack]"; // A special node to ho
 
 static TreeNode app_ensure_metadata_node(AppState *app) ;
 static void update_current_with_history(AppState *app, TreeNode new_position) ;
-static void handle_add_child_to_tail(AppState *app) ;
+static void handle_add_child_to_tail(AppState *app, TreeNode node) ;
 
 static TreeNode app_metadata_key_node(AppState *app, const char *key) ;
 static TreeNode app_metadata_key_node(AppState *app, const char *key) {
@@ -485,7 +485,7 @@ static void handle_add_child_node(AppState *app) {
     event_destroy(event);
     ui_render(app->ui);// render to get text position
     
-    handle_edit_node(app);
+    handle_edit_node(app, ui->current_node);
     
     if(is_current_task){
         // update current task
@@ -518,12 +518,12 @@ static void handle_add_child_node(AppState *app) {
 }
 
 
-void handle_edit_node(AppState *app);
+void handle_edit_node(AppState *app, TreeNode node);
 static void handle_as_current_task(AppState *app, TreeNode node);
 
-void handle_add_child_to_tail(AppState *app) {
+void handle_add_child_to_tail(AppState *app, TreeNode node) {
     UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = node;
     log_debug("[handle_add_child_to_tail] Before add: current_node id=%lu, kind=%d", 
               tree_node_id(current), current.kind);
 
@@ -535,15 +535,16 @@ void handle_add_child_to_tail(AppState *app) {
     );
     operate_commit_event(app->operate, event);
     ui->current_node = tree_find_by_id(app->tree_overlay, event->new_node_id);
+    TreeNode child_node = ui->current_node;
     
     event_destroy(event);
     ui_render(app->ui);// render to get text position
 
-    handle_edit_node(app);
+    handle_edit_node(app, child_node);
 
-    const char *current_text = tree_node_text(ui->current_node);
-    if(is_current_task && current_text != NULL && current_text[0] != '.') {
-        handle_as_current_task(app, ui->current_node);
+    const char *child_text = tree_node_text(child_node);// must not use ui->current_node here because current node text may be changed by handle_edit_node
+    if(is_current_task && child_text != NULL && child_text[0] != '.') {
+        handle_as_current_task(app, child_node);
     }
 }
 
@@ -576,7 +577,7 @@ static void handle_add_sibling_above(AppState *app) {
         ui->current_node = tree_find_by_id(app->tree_overlay, event->new_node_id);
         ui_render(app->ui);
 
-        handle_edit_node(app);
+        handle_edit_node(app, ui->current_node);
     }
 }
 
@@ -594,14 +595,14 @@ static void handle_add_sibling_below(AppState *app) {
         ui->current_node = tree_find_by_id(app->tree_overlay, event->new_node_id);
         ui_render(app->ui);
 
-        handle_edit_node(app);
+        handle_edit_node(app, ui->current_node);
     }
 
 }
 
-void handle_edit_node(AppState *app){
+void handle_edit_node(AppState *app, TreeNode node){
     UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = node;
     char terminated_character = 0;
     char *name = ui_get_name(ui, &terminated_character);
     if(terminated_character == '\e'){
@@ -624,7 +625,7 @@ void handle_edit_node(AppState *app){
 
     if(terminated_character == '\t'){
         // if terminated by tab, immediately add a child node and edit it
-        handle_add_child_to_tail(app);
+        handle_add_child_to_tail(app, node);
     }
 }
 
@@ -1745,7 +1746,7 @@ static void handle_send_command(AppState *app){
 
 static void handle_create_child_task(AppState *app) {
     handle_move_focus_current_task(app);
-    handle_add_child_to_tail(app);
+    handle_add_child_to_tail(app, app->ui->current_node);
 }
 
 static void handle_create_sibling_task(AppState *app) {
@@ -2074,7 +2075,7 @@ void handle_add_new_task(AppState *app) {
         log_warn("handle_add_new_task: Failed to update current task text");
     }
 
-    handle_edit_node(app);
+    handle_edit_node(app, current);
 
     node_metadata_set(app, current, APP_META_CURRENT_TASK, current_task_id_str);
 
@@ -2855,7 +2856,7 @@ void app_apply_event(AppState *app, UserOperation uo) {
         handle_add_child_node(app);
         break;
     case UO_ADD_CHILD_TO_TAIL:
-        handle_add_child_to_tail(app);
+        handle_add_child_to_tail(app, app->ui->current_node);
         break;
     case UO_ADD_SIBLING_ABOVE:
         handle_add_sibling_above(app);
@@ -2864,7 +2865,7 @@ void app_apply_event(AppState *app, UserOperation uo) {
         handle_add_sibling_below(app);
         break;
     case UO_EDIT_NODE:
-        handle_edit_node(app);
+        handle_edit_node(app, app->ui->current_node);
         break;
     case UO_MARK_AS_DEFINITION:
         handle_mark_as_definition(app);
