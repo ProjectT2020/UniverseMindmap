@@ -102,7 +102,7 @@ int operate_fold_node(Operate *operate, TreeNode node){
     return 0;
 }
 
-int tree_apply_wal_append(TreeOverlay *overlay, Wal *wal, Event *e) {
+int operate_tree_apply_wal_append(TreeOverlay *overlay, Wal *wal, Event *e) {
     if (!overlay || !wal || !e) return -1;
     int r = tree_overlay_apply_event(overlay, e);
     if(r == 0){
@@ -112,11 +112,13 @@ int tree_apply_wal_append(TreeOverlay *overlay, Wal *wal, Event *e) {
     return r;
 }
 
-int operate_undo(Operate *operate){
+int operate_undo(Operate *operate, Event **out_event){
     if (!operate) return -1;
     Event *e = (Event *)stack_pop(operate->undo_stack);
+    *out_event = e;
     if (!e) {
         log_info("operate_undo: No more events to undo");
+        log_ui_message("operate_undo: No more events to undo");
         return -1;
     }
 
@@ -124,13 +126,14 @@ int operate_undo(Operate *operate){
     Event *inverse_e = event_invert(operate->overlay->last_applied_lsn + 1, e);
     if (inverse_e) {
         // Apply inverse event
-        tree_apply_wal_append(operate->overlay, operate->wal, inverse_e);
+        operate_tree_apply_wal_append(operate->overlay, operate->wal, inverse_e);
         // Push original event to redo stack
         stack_push(operate->redo_stack, e);
         // Clean up inverse event
         event_destroy(inverse_e);
     } else {
         // If we cannot generate an inverse, push back the original event
+        log_ui_message("operate_undo: Cannot undo event of type %d", e->type);
         stack_push(operate->undo_stack, e);
         return -1;
     }
@@ -144,7 +147,7 @@ int operate_redo(Operate *operate){
 
     // Re-apply the event with next LSN
     e->lsn = operate->overlay->last_applied_lsn + 1;
-    tree_apply_wal_append(operate->overlay, operate->wal, e);
+    operate_tree_apply_wal_append(operate->overlay, operate->wal, e);
     // Push event back to undo stack
     stack_push(operate->undo_stack, e);
     return 0;

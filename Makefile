@@ -37,6 +37,7 @@ APP_SRCS := \
 # Object files
 CORE_OBJS := $(CORE_SRCS:.c=.o)
 APP_OBJS := $(APP_SRCS:.c=.o)
+DEPS := $(CORE_OBJS:.o=.d) $(APP_OBJS:.o=.d)
 
 TARGET := bin/universe-mindmap
 
@@ -83,3 +84,5 @@ help:
 	@echo "  make install  Install the application"
 	@echo "  make uninstall Uninstall the application"
 	@echo "  make loc      Count lines of code in C source/header files"
+
+-include $(DEPS)

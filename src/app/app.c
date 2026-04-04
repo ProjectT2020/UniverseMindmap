@@ -377,6 +377,7 @@ AppState* app_init(const char *data_file) {
     app->ui = ui_context_create(width, height);
     app->ui->overlay = app->tree_overlay;
     app->ui->current_node = app->tree_overlay->root;
+    log_register_ui_message_fun(ui_message_fun, app->ui);
     log_debug("[app_init] Set current_node to root: id=%lu, kind=%d", 
               tree_node_id(app->ui->current_node), app->ui->current_node.kind);
     
@@ -882,9 +883,28 @@ void handle_fold_more(AppState *app) {
 
 void handle_undo(AppState *app) {
     log_debug("[handle_undo] Performing undo operation");
-    int r = operate_undo(app->operate);
+    Event *last_event = NULL;
+    int r = operate_undo(app->operate, &last_event);
     if (r != 0) {
         log_warn("Undo operation failed");
+    }else if(last_event != NULL){
+        uint64_t event_node_id = 0;
+        switch(last_event->type){
+            case EVENT_UPDATE_TEXT:
+            case EVENT_MOVE_SUBTREE: {
+                    event_node_id = last_event->node_id;
+                break;
+            }
+            default:
+                break;
+        }
+        if(event_node_id != 0){
+            TreeNode node = tree_find_by_id(app->tree_overlay, event_node_id);
+            if(!tree_node_is_null(node)){
+                app->ui->current_node = node;
+            }
+        }
+        event_destroy(last_event);
     }
 }
 

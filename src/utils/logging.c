@@ -12,6 +12,8 @@ char status_message[1024] = "";
 
 static FILE *log_file = NULL;
 static LogOutputMode output_mode = LOG_TO_FILE_ONLY; // default to file only
+static void (*ui_message_fun)(void *ctx, const char *fmt, va_list args) = NULL;
+static void *ui_message_fun_ctx = NULL;
 
 int logging_init(char *log_file_path){
     if(log_file_path == NULL){
@@ -135,4 +137,20 @@ void log_error(const char *fmt, ...) {
             fflush(log_file);
         }
     }
+}
+
+void log_register_ui_message_fun(void (*fun)(void *ctx, const char *fmt, va_list args), void *ctx) {
+    ui_message_fun = fun;
+    ui_message_fun_ctx = ctx;
+}
+
+void log_ui_message(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+
+    if(ui_message_fun && ui_message_fun_ctx) {
+        ui_message_fun(ui_message_fun_ctx, fmt, args);
+    }
+
+    va_end(args);
 }

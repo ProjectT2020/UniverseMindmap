@@ -38,7 +38,7 @@ int operate_commit_event(Operate *operate, Event *e);
 int operate_commit_transaction(Operate *operate);
 int operate_begin_transaction(Operate *operate);
 
-int operate_undo(Operate *operate);
+int operate_undo(Operate *operate, Event **out_event);
 int operate_redo(Operate *operate);
 int operate_copy_subtree(Operate *operate, TreeNode node) ;
 int operate_delete_subtree(Operate *operate, TreeNode node);

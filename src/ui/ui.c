@@ -17,6 +17,18 @@
 #include "../operate/operate_type.h"
 #include "../layout/mindmap_layout.h"
 
+static bool ui_context_is_valid(const UiContext *ctx, const char *fn_name) {
+    if (ctx == NULL) {
+        log_error("%s: ctx is NULL", fn_name);
+        return false;
+    }
+    if (ctx->magic != UI_CONTEXT_MAGIC) {
+        log_error("%s: invalid context magic: expected %u, got %u", fn_name, UI_CONTEXT_MAGIC, ctx->magic);
+        return false;
+    }
+    return true;
+}
+
 char next_char() {
     char c = 0;
     int n = read(STDIN_FILENO, &c, 1);
@@ -741,7 +753,12 @@ UiContext* ui_context_create(int width, int height){
     system("stty discard undef");
     system("stty dsusp undef"); // ^Y is bound to VDSUSP (stty: susp)
 #endif
-    UiContext *ctx = (UiContext*)malloc(sizeof(UiContext));
+    UiContext *ctx = (UiContext*)calloc(1, sizeof(UiContext));
+    if (ctx == NULL) {
+        log_error("ui_context_create: failed to allocate UiContext");
+        return NULL;
+    }
+    ctx->magic = UI_CONTEXT_MAGIC;
     ctx->width = width;
     ctx->height = height;
     ctx->offset_x = 0;
@@ -1331,6 +1348,14 @@ void ui_info_set_message(UiContext *ctx, const char *msg, ...){
     va_start(args, msg);
     vsnprintf(ctx->info_message, sizeof(ctx->info_message), msg, args);
     va_end(args);
+}
+
+void ui_message_fun(void *uc, const char *msg, va_list args){
+    UiContext *ctx = (UiContext *)uc;
+    if (!ui_context_is_valid(ctx, "ui_message_fun")) {
+        return;
+    }
+    vsnprintf(ctx->info_message, sizeof(ctx->info_message), msg, args);
 }
 
 void ui_reset_layout(UiContext *ui){

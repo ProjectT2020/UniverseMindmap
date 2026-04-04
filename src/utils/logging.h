@@ -2,6 +2,7 @@
 #define LOGGING_H
 
 #include <stdbool.h>
+#include <stdarg.h>
 
 typedef enum {
     LOG_TO_FILE_ONLY,   // log to file only
@@ -26,5 +27,8 @@ void log_debug(const char *fmt, ...);
 void log_info(const char *fmt, ...);
 void log_error(const char *fmt, ...);
 void log_warn(const char *fmt, ...);
+
+void log_register_ui_message_fun(void (*fun)(void *ctx, const char *fmt, va_list args), void *ctx) ;
+void log_ui_message(const char *fmt, ...) ;
 
 #endif // LOGGING_H

@@ -2,8 +2,13 @@
 #ifndef UI_H
 #define UI_H
 
+#include <__stdarg_va_list.h>
+#include <stdint.h>
+
 #include "../tree/tree_overlay.h"// domain node
 #include "../ui/tty.h"
+
+#define UI_CONTEXT_MAGIC 0x55494358u
 
 typedef struct {
     enum {
@@ -129,6 +134,7 @@ typedef struct UiContext UiContext;
 typedef void (*UiGetNameFn)(UiContext *ctx, char *buffer, size_t buffer_size);
 
 typedef struct UiContext {
+    uint32_t magic;            // runtime type/lifetime guard
     int width;
     int height;
     int offset_x;
@@ -215,5 +221,7 @@ void ui_view_prev_page(UiContext *ui);
 void ui_info_set_message(UiContext *ctx, const char *msg, ...);
 
 void ui_reset_layout(UiContext *ui);
+
+void ui_message_fun(void *uc, const char *msg, va_list args);
 
 #endif // UI_H
