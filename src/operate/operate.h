@@ -13,13 +13,21 @@ typedef enum {
     SEARCH_DIRECTION_BACKWARD = 1
 } SearchDirection;
 
+typedef enum {
+    OPERATION_MODE_NORMAL = 0,
+    OPERATION_MODE_EDIT_HISTORY = 1,
+} OperationMode;
+
 typedef struct {
     TreeOverlay *overlay;
     UiContext *ui;
     Wal *wal;
     Stack *undo_stack;
     Stack *redo_stack;
-    
+    OperationMode mode;
+    bool edit_history_node_fold; // whether the edit history node is folded before switching to edit history mode
+    uint64_t normal_mode_node_id; // to store the current node id when switching to edit history mode, so that we can jump back to it when switching back to normal mode
+
     TreeNode clipboard;            // node to be copied
     enum {  // clipboard state
         CLIPBOARD_EMPTY = 0,
@@ -53,7 +61,8 @@ int operate_copy_paste_as_last_child(Operate *operate, TreeNode parent);
 
 TreeNode operate_search_next(Operate *operate, TreeNode start_node);
 TreeNode operate_search_prev(Operate *operate, TreeNode start_node);
-TreeNode operate_search_next_in_subtree(Operate *operate, TreeNode start_node, const char *search_term);
+TreeNode operate_search_next_in_subtree(Operate *operate, TreeNode start_node, const char *search_term,
+    bool (*filter)(TreeNode node, void *ctx), void *filter_ctx);
 
 int operate_edit_node(Operate *operate, TreeNode node);
 int operate_reduce_folding(Operate *operate, TreeNode current, int fold_level);
@@ -63,5 +72,9 @@ int operate_fold_node(Operate *operate, TreeNode node);
 // external
 int operate_ask_ai(Operate *operate, TreeNode node, enum query_scope scope);
 int operate_output_ai_message();
+
+// edit history
+TreeNode operate_edit_history_last_record(Operate *operate, TreeNode edit_history_node);
+int operate_edit_history_record(Operate *operate, Event *e);
 
 #endif // OPERATE_H

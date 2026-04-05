@@ -342,12 +342,82 @@ static void test_truncate_commited_rejects_non_terminal_transaction_lsn(void) {
     assert(unlink(path) == 0);
 }
 
+static void test_truncate_commited_nested_transaction_keeps_reference_and_drops_trailing_commits(void) {
+    char path[] = "/tmp/um_wal_truncate_nested_ok_XXXXXX";
+    int fd = mkstemp(path);
+    assert(fd >= 0);
+    close(fd);
+
+    Wal *wal = wal_open(path);
+    assert(wal != NULL);
+
+    append_event_or_die(wal, new_event(EVENT_UPDATE_TEXT, 1, "before"));
+    append_event_or_die(wal, new_event(EVENT_BEGIN_TRANSACTION, 0, NULL));
+    append_event_or_die(wal, new_event(EVENT_UPDATE_TEXT, 2, "outer"));
+    append_event_or_die(wal, new_event(EVENT_BEGIN_TRANSACTION, 0, NULL));
+    append_event_or_die(wal, new_event(EVENT_UPDATE_TEXT, 3, "inner-last"));
+    append_event_or_die(wal, new_event(EVENT_COMMIT_TRANSACTION, 0, NULL));
+    append_event_or_die(wal, new_event(EVENT_COMMIT_TRANSACTION, 0, NULL));
+    append_event_or_die(wal, new_event(EVENT_UPDATE_TEXT, 4, "after"));
+
+    // LSN 5 is inside nested transactions and is terminal for both levels.
+    assert(wal_truncate_commited(wal, 5) == 0);
+
+    RawCapture capture = {0};
+    capture_raw_entries(path, &capture);
+    assert(capture.count == 2);
+    assert(capture.entries[0].lsn == 5);
+    assert(capture.entries[0].type == EVENT_UPDATE_TEXT);
+    assert(capture.entries[1].lsn == 8);
+    assert(capture.entries[1].type == EVENT_UPDATE_TEXT);
+
+    wal_close(wal);
+    assert(unlink(path) == 0);
+}
+
+static void test_truncate_commited_nested_transaction_rejects_non_terminal_lsn(void) {
+    char path[] = "/tmp/um_wal_truncate_nested_bad_XXXXXX";
+    int fd = mkstemp(path);
+    assert(fd >= 0);
+    close(fd);
+
+    Wal *wal = wal_open(path);
+    assert(wal != NULL);
+
+    append_event_or_die(wal, new_event(EVENT_BEGIN_TRANSACTION, 0, NULL));
+    append_event_or_die(wal, new_event(EVENT_UPDATE_TEXT, 10, "outer-a"));
+    append_event_or_die(wal, new_event(EVENT_BEGIN_TRANSACTION, 0, NULL));
+    append_event_or_die(wal, new_event(EVENT_UPDATE_TEXT, 11, "inner-last"));
+    append_event_or_die(wal, new_event(EVENT_COMMIT_TRANSACTION, 0, NULL));
+    append_event_or_die(wal, new_event(EVENT_UPDATE_TEXT, 12, "outer-b"));
+    append_event_or_die(wal, new_event(EVENT_COMMIT_TRANSACTION, 0, NULL));
+
+    RawCapture before = {0};
+    capture_raw_entries(path, &before);
+
+    // LSN 4 is terminal for inner txn but not terminal for outer txn.
+    assert(wal_truncate_commited(wal, 4) == -1);
+
+    RawCapture after = {0};
+    capture_raw_entries(path, &after);
+    assert(after.count == before.count);
+    for (int i = 0; i < before.count; i++) {
+        assert(after.entries[i].lsn == before.entries[i].lsn);
+        assert(after.entries[i].type == before.entries[i].type);
+    }
+
+    wal_close(wal);
+    assert(unlink(path) == 0);
+}
+
 int main(void) {
     test_recover_truncates_uncommitted_transaction();
     test_recover_keeps_non_transaction_tail_entries();
     test_truncate_commited_keeps_reference_plain_entry();
     test_truncate_commited_removes_commit_after_transaction_checkpoint();
     test_truncate_commited_rejects_non_terminal_transaction_lsn();
+    test_truncate_commited_nested_transaction_keeps_reference_and_drops_trailing_commits();
+    test_truncate_commited_nested_transaction_rejects_non_terminal_lsn();
 
     printf("[PASS] wal scan/recover tests\n");
     return 0;

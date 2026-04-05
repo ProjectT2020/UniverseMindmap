@@ -165,6 +165,9 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
         case 'o':
             input.type = UO_ADD_SIBLING_BELOW;
             break;
+        case ' ':
+            input.type = UO_HIT_SPACE;
+            break;
         case '\n':
             input.type = UO_HIT_CTRL_J;
             break;
@@ -281,30 +284,46 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
             break;
         case 'g': {
             char next = next_char();
-            if (next == 'p') {
-                input.type = UO_PASTE_AS_CHILD;
-            } else if (next == '0') {
-                input.type = UO_MOVE_FOCUS_HOME;
-            } else if (next == 'c') {
-                input.type = UO_MOVE_FOCUS_CURRENT_TASK;
-            } else if (next == 'j') {
-                input.type = UO_MOVE_FOCUS_DOWN;
-            } else if (next == 'k') {
-                input.type = UO_MOVE_FOCUS_UP;
-            } else if (next == 'g') {
-                input.type = UO_MOVE_FOCUS_TOP;
-            } else if (next == 'J') {
-                input.type = UO_JOIN_TEXT_WITHOUT_SPACE;
-            } else if (next == 'y') {
-                input.type = UO_COPY_TEXT_TO_SYSTEM_CLIPBOARD;
-            } else if (next == 'Y') {
-                input.type = UO_COPY_SUBTREE_TO_SYSTEM_CLIPBOARD;
-            } else if (next == 'd'){
-                input.type = UO_JUMP_KEYWORD_DEFINITION;
-            } else if (next == 'f'){
-                input.type = UO_OPEN_RESOURCE_LINK;
-            } else {
-                log_info("Unknown input sequence: g%c\n", next);
+            switch(next) {
+                case 'p':
+                    input.type = UO_PASTE_AS_CHILD;
+                    break;
+                case '0':
+                    input.type = UO_MOVE_FOCUS_HOME;
+                    break;
+                case 'c':
+                    input.type = UO_MOVE_FOCUS_CURRENT_TASK;
+                    break;
+                case 'j':
+                    input.type = UO_MOVE_FOCUS_DOWN;
+                    break;
+                case 'k':
+                    input.type = UO_MOVE_FOCUS_UP;
+                    break;
+                case 'g':
+                    input.type = UO_MOVE_FOCUS_TOP;
+                    break;
+                case 'J':
+                    input.type = UO_JOIN_TEXT_WITHOUT_SPACE;
+                    break;
+                case 'y':
+                    input.type = UO_COPY_TEXT_TO_SYSTEM_CLIPBOARD;
+                    break;
+                case 'Y':
+                    input.type = UO_COPY_SUBTREE_TO_SYSTEM_CLIPBOARD;
+                    break;
+                case 'd':
+                    input.type = UO_JUMP_KEYWORD_DEFINITION;
+                    break;
+                case 'f':
+                    input.type = UO_OPEN_RESOURCE_LINK;
+                    break;
+                case ';':
+                    input.type = UO_TO_EDIT_HISTORY;
+                    break;
+                default:
+                    log_info("Unknown input sequence: g%c\n", next);
+                    break;
             }
             break;
         }

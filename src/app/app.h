@@ -9,6 +9,8 @@
 #include "../operate/operate.h"
 #include "../connect/connect.h"
 
+extern const char *APP_META_EDIT_HISTORY;
+
 /**
  * application state structure
  */
@@ -75,9 +77,13 @@ void handle_focus_down(AppState *app);
 void handle_delete_node(AppState *app);
 void handle_delete_subtree(AppState *app);
 
-void handle_edit_node(AppState *app, TreeNode node);
+void handle_edit_node(AppState *app, TreeNode node, char *terminated_character);
 
 void handle_undo(AppState *app);
 void handle_redo(AppState *app);
+
+
+// app metadata management
+TreeNode app_metadata_key_node(Operate *operate, const char *key) ;
 
 #endif // APP_H

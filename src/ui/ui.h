@@ -105,6 +105,7 @@ typedef struct {
         UO_JUMP_KEYWORD_DEFINITION, // Ctrl-] jump to keyword definition
         UO_HIT_ENTER,            // user pressed Enter (\r) 
         UO_HIT_CTRL_J,            // user pressed Ctrl+J (\n)
+        UO_HIT_SPACE,            // user pressed Space ( )
 
         // view
         UO_VIEW_UP,               // Ctrl-Y 
@@ -118,6 +119,9 @@ typedef struct {
         UO_MARK_NODE,              // mark node with letter
         UO_JUMP_TO_MARK,            // jump to mark
         UO_JUMP_TO_UI_NODE_MARK,    // visible node mark
+
+        // edit history
+        UO_TO_EDIT_HISTORY,        // ';' jump to edit history (previously edited nodes)
 
         // headless exit operations
         UO_EXIT_SAVE,             // save and exit

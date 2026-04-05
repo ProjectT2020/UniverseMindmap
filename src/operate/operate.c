@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
 #include <unistd.h> // close()
@@ -17,6 +18,7 @@
 #include "../utils/stack.h"
 #include "../utils/queue.h"
 #include "../utils/os_specific.h"
+#include "../app/app.h"
 
 #include "operate.h"
 
@@ -489,17 +491,19 @@ TreeNode operate_search_next(Operate *operate, TreeNode start_node){
     return (TreeNode){ .kind = TREE_NODE_NULL };
 }
 
-TreeNode operate_search_next_in_subtree(Operate *operate, TreeNode start_node, const char *search_term){
+TreeNode operate_search_next_in_subtree(Operate *operate, TreeNode start_node, const char *search_term,
+    bool (*filter)(TreeNode node, void *ctx), void *filter_ctx
+){
     TreeOverlay *ov = operate->overlay;
 
-    TreeNode current = tree_node_first_child(ov, start_node);
+    TreeNode current = tree_node_first_child_with_filter(ov, start_node, filter, filter_ctx);
     uint64_t start_id = tree_node_id(start_node);
 
     bool from_child = false;
     while (tree_node_id(current) != start_id) {
         TreeNode next_node;
         if(from_child){
-            next_node = tree_node_next_sibling(ov, current);
+            next_node = tree_node_next_sibling_with_filter(ov, current, filter, filter_ctx);
             if(tree_node_is_null(next_node)){
                 current = tree_node_parent(ov, current);
                 from_child = true;
@@ -508,9 +512,9 @@ TreeNode operate_search_next_in_subtree(Operate *operate, TreeNode start_node, c
                 from_child = false;
             }
         }else{
-            next_node = tree_node_first_child(ov, current);
+            next_node = tree_node_first_child_with_filter(ov, current, filter, filter_ctx);
             if(tree_node_is_null(next_node)){
-                next_node = tree_node_next_sibling(ov, current);
+                next_node = tree_node_next_sibling_with_filter(ov, current, filter, filter_ctx);
                 if(tree_node_is_null(next_node)){
                     current = tree_node_parent(ov, current);
                     from_child = true;
@@ -904,4 +908,204 @@ int operate_output_ai_message() {
     printf("%s", message.mtext);
 
     return 0;
+}
+
+static bool is_meta(Operate *operate, TreeNode node){
+    if(tree_node_is_null(node)){
+        return false;
+    }
+    const char *text = tree_node_text(node);
+    if(strcmp(text, ".meta") == 0){
+        return true;
+    }
+    TreeNode parent = tree_node_parent(operate->overlay, node);
+    return is_meta(operate, parent);
+}
+
+TreeNode operate_edit_history_last_record(Operate *operate, TreeNode edit_history_node){
+    TreeNode last_record = tree_node_first_child(operate->overlay, edit_history_node);
+    while(!tree_node_is_null(last_record)){
+        TreeNode child = tree_node_first_child(operate->overlay, last_record);
+        if(tree_node_is_null(child)){
+            break;
+        }
+        last_record = child;
+    }
+    return last_record;
+}
+
+/**
+ * don't free the returned string, it's a static buffer 
+ */
+static char *tree_node_id_str(TreeNode node){
+    static char buf[32];
+    if(tree_node_is_null(node)){
+        snprintf(buf, sizeof(buf), "null");
+    }else{
+        snprintf(buf, sizeof(buf), "%" PRIu64, tree_node_id(node));
+    }
+    return buf;
+}
+
+static uint64_t str2id(const char *str){
+    uint64_t id;
+    sscanf(str, "%" SCNu64, &id);
+    return id;
+}
+
+int operate_edit_history_record(Operate *operate, Event *event){
+    TreeNode node = (TreeNode){ .kind = TREE_NODE_NULL };
+    switch(event->type){
+        case EVENT_ADD_LAST_CHILD:
+        case EVENT_ADD_SIBLING:
+            node = tree_find_by_id(operate->overlay, event->new_node_id);
+            break;
+        case EVENT_MOVE_SUBTREE:
+        case EVENT_UPDATE_TEXT:
+            node = tree_find_by_id(operate->overlay, event->node_id);
+            break;
+        default:
+            log_info("operate_edit_history_record: Unsupported event type for editing: %d", event->type);
+            return -1;
+    }
+    if(tree_node_is_null(node)){
+        log_error("operate_edit_history_record: Failed to find node for event type %d", event->type);
+        log_ui_message("Failed to find node for event type %d", event->type);
+        return -1;
+    }
+    if(is_meta(operate, node)){
+        // do not need to record history for meta node changes
+        return 0;
+    }
+
+    // edit history stack add
+    operate_begin_transaction(operate);
+    TreeNode edit_history_node = app_metadata_key_node(operate, APP_META_EDIT_HISTORY);
+    assert(!tree_node_is_null(edit_history_node));
+    TreeNode last_record = operate_edit_history_last_record(operate, edit_history_node);
+    char * node_id_str = tree_node_id_str(node);
+    if(tree_node_is_null(last_record)) {
+        Stack *stack = stack_create(1024);
+        TreeNode n = node;
+        while(!tree_node_is_null(n)){
+            TreeNode *pn = (TreeNode *)malloc(sizeof(TreeNode));
+            *pn = n;
+            stack_push(stack, pn);
+            n = tree_node_parent(operate->overlay, n);
+        }
+        TreeNode current_parent = edit_history_node;
+        while(!stack_is_empty(stack)){
+            TreeNode *pn = (TreeNode *)stack_pop(stack);
+            Event *e = event_create_add_last_child(
+                tree_node_id(current_parent),
+                tree_node_text(*pn)
+            );
+            int r = operate_commit_event(operate, e);
+            if(r != 0){
+                log_error("operate_edit_history_record: Failed to commit ADD_LAST_CHILD event for edit history");
+                stack_destroy(stack);
+                return -1;
+            }
+            current_parent = tree_find_by_id(operate->overlay, e->new_node_id);
+            event_destroy(e);
+            free(pn);
+        }
+        stack_destroy(stack);
+        Event *record_event = event_create_add_last_child(
+            tree_node_id(current_parent),
+            node_id_str
+        );
+        int r = operate_commit_event(operate, record_event);
+        if(r != 0){
+            log_error("operate_edit_history_record: Failed to commit ADD_LAST_CHILD event for edit history record");
+            return -1;
+        }
+        event_destroy(record_event);
+    }else{
+        uint64_t last_record_node_id = str2id(tree_node_text(last_record));
+        Stack *last_record_path_stack = stack_create(1024);
+        TreeNode n = tree_find_by_id(operate->overlay, last_record_node_id);
+        while(!tree_node_is_null(n)){
+            TreeNode *pn = (TreeNode *)malloc(sizeof(TreeNode));
+            *pn = n;
+            stack_push(last_record_path_stack, pn);
+            n = tree_node_parent(operate->overlay, n);
+        }
+
+        uint64_t new_record_node_id = tree_node_id(node);
+        Stack *new_record_path_stack = stack_create(1024);
+        TreeNode n2 = node;
+        while(!tree_node_is_null(n2)){
+            TreeNode *pn = (TreeNode *)malloc(sizeof(TreeNode));
+            *pn = n2;
+            stack_push(new_record_path_stack, pn);
+            n2 = tree_node_parent(operate->overlay, n2);
+        }
+
+        Stack *common_ancestor_stack = stack_create(1024);
+        while(!stack_is_empty(new_record_path_stack) && !stack_is_empty(last_record_path_stack)){
+            TreeNode *pn1 = (TreeNode *)stack_peek(new_record_path_stack);
+            TreeNode *pn2 = (TreeNode *)stack_peek(last_record_path_stack);
+            if(tree_node_id(*pn1) == tree_node_id(*pn2) 
+                && tree_node_id(*pn1) != new_record_node_id
+                && tree_node_id(*pn2) != last_record_node_id
+                ){
+                stack_push(common_ancestor_stack, pn1);
+                stack_pop(new_record_path_stack);
+                stack_pop(last_record_path_stack);
+            }else{
+                break;
+            }
+        }
+        stack_destroy(last_record_path_stack);
+        
+        // new_record_path_stack: |(stack bottom) new record node -> ... -> (top) | common ancestor node (excluded)
+        // common_ancestor_stack: |(stack bottom) root -> ... -> common ancestor node
+        // find current_parent
+        TreeNode current_parent = (TreeNode ){.kind = TREE_NODE_NULL};
+        if(stack_is_empty(common_ancestor_stack)){
+            current_parent = edit_history_node;
+        }else{
+            TreeNode n = edit_history_node;
+            while(!stack_is_empty(common_ancestor_stack)){
+                n = tree_node_first_child(operate->overlay, n);
+                stack_pop(common_ancestor_stack);
+            }
+            current_parent = n;
+        }
+
+        while(!stack_is_empty(new_record_path_stack)){
+            TreeNode *pn = (TreeNode *)stack_pop(new_record_path_stack);
+            Event *e = event_create_add_first_child(
+                tree_node_id(current_parent),
+                tree_node_text(*pn)
+            );
+            int r = operate_commit_event(operate, e);
+            if(r != 0){
+                log_error("operate_edit_history_record: Failed to commit ADD_FIRST_CHILD event for edit history");
+                stack_destroy(new_record_path_stack);
+                stack_destroy(common_ancestor_stack);
+                return -1;
+            }
+            current_parent = tree_find_by_id(operate->overlay, e->new_node_id);
+            event_destroy(e);
+        }
+        stack_destroy(new_record_path_stack);
+        while(!stack_is_empty(common_ancestor_stack)){
+            TreeNode *pn = (TreeNode *)stack_pop(common_ancestor_stack);
+            free(pn);
+        }
+        stack_destroy(common_ancestor_stack);
+        Event *record_event = event_create_add_last_child(
+            tree_node_id(current_parent),
+            node_id_str
+        );
+        int r = operate_commit_event(operate, record_event);
+        if(r != 0){
+            log_error("operate_edit_history_record: Failed to commit UPDATE_TEXT event for edit history record");
+            event_destroy(record_event);
+            return -1;
+        }
+    }
+    operate_commit_transaction(operate);
 }

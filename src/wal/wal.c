@@ -75,7 +75,7 @@ static int wal_scan_and_recover(int fd, uint64_t *out_last_lsn, uint64_t *out_en
     uint64_t last_lsn = 0;
 
     uint64_t next_valid_transaction_offset = 0;
-    bool in_transaction = false;
+    int in_nested_transaction_depth = 0;
     while (1) {
         struct WalEntryHeader hdr;
         ssize_t r = read(fd, &hdr, sizeof(hdr));
@@ -115,11 +115,11 @@ static int wal_scan_and_recover(int fd, uint64_t *out_last_lsn, uint64_t *out_en
             break;
         }
         if(event->type == EVENT_BEGIN_TRANSACTION){
-            in_transaction = true;
+            in_nested_transaction_depth++;
         } else if (event->type == EVENT_COMMIT_TRANSACTION){
-            in_transaction = false;
+            in_nested_transaction_depth--;
         }
-        if (!in_transaction) {
+        if (in_nested_transaction_depth == 0) {
             next_valid_transaction_offset = (off_t)lseek(fd, 0, SEEK_CUR);
             last_lsn = hdr.lsn;
         }
@@ -436,36 +436,41 @@ int wal_truncate_commited(Wal *wal, uint64_t lsn) {
         return -1;
     }
 
-    // Iterate through all entries and preserve the reference entry and later ones.
+    // Iterate through entries and write kept entries to temp file.
     off_t offset = 0;
     off_t new_end_offset = 0;
     int entries_kept = 0;
     int entries_removed = 0;
-
-    bool in_transaction = false;
-    bool waiting_for_commit = false;
     uint64_t truncated_through_lsn = 0;
+
+    int txn_depth = 0;
+    int pending_commits_after_reference = 0;
+    bool found_reference = false;
 
     while (offset < (off_t)wal->end_offset) {
         struct WalEntryHeader hdr;
         ssize_t n = pread(wal->fd, &hdr, sizeof(hdr), offset);
         if (n != (ssize_t)sizeof(hdr)) {
-            break; // Reached EOF or read error
+            log_error("[wal_truncate_commited] failed to read header at offset %lld", (long long)offset);
+            close(temp_fd);
+            unlink(temp_path);
+            return -1;
         }
 
         if (hdr.magic != WAL_MAGIC) {
-            log_debug("[wal_truncate_commited] invalid magic at offset %lld", (long long)offset);
-            break;
+            log_error("[wal_truncate_commited] invalid magic at offset %lld", (long long)offset);
+            close(temp_fd);
+            unlink(temp_path);
+            return -1;
         }
-
         if (hdr.length == 0 || hdr.length > (32u * 1024u * 1024u)) {
             log_error("[wal_truncate_commited] invalid entry length: %u", hdr.length);
-            break;
+            close(temp_fd);
+            unlink(temp_path);
+            return -1;
         }
 
-        // Total entry size = header + payload
-        uint32_t total_entry_size = sizeof(hdr) + hdr.length;
-
+        uint32_t total_entry_size = (uint32_t)sizeof(hdr) + hdr.length;
         uint8_t *entry_buf = (uint8_t *)malloc(total_entry_size);
         if (!entry_buf) {
             log_error("[wal_truncate_commited] failed to allocate %u bytes", total_entry_size);
@@ -476,66 +481,91 @@ int wal_truncate_commited(Wal *wal, uint64_t lsn) {
 
         n = pread(wal->fd, entry_buf, total_entry_size, offset);
         if (n != (ssize_t)total_entry_size) {
-            log_error("[wal_truncate_commited] failed to read complete entry");
+            log_error("[wal_truncate_commited] failed to read complete entry at offset %lld", (long long)offset);
             free(entry_buf);
-            break;
+            close(temp_fd);
+            unlink(temp_path);
+            return -1;
         }
 
         struct WalEntryHeader *read_hdr = (struct WalEntryHeader *)entry_buf;
-        uint64_t entry_lsn = read_hdr->lsn;
         uint8_t *payload = entry_buf + sizeof(*read_hdr);
         uint32_t crc = crc32_ieee(payload, (size_t)read_hdr->length);
         if (crc != read_hdr->crc32) {
-            log_error("[wal_truncate_commited] crc mismatch at lsn=%" PRIu64, entry_lsn);
+            log_error("[wal_truncate_commited] crc mismatch at lsn=%" PRIu64, read_hdr->lsn);
             free(entry_buf);
-            break;
+            close(temp_fd);
+            unlink(temp_path);
+            return -1;
         }
 
         Event *event = event_deserialize(payload, (size_t)read_hdr->length);
         if (!event) {
-            log_error("[wal_truncate_commited] failed to deserialize entry at lsn=%" PRIu64, entry_lsn);
+            log_error("[wal_truncate_commited] failed to deserialize entry at lsn=%" PRIu64, read_hdr->lsn);
             free(entry_buf);
-            break;
+            close(temp_fd);
+            unlink(temp_path);
+            return -1;
         }
 
-        bool entry_is_begin = event->type == EVENT_BEGIN_TRANSACTION;
-        bool entry_is_commit = event->type == EVENT_COMMIT_TRANSACTION;
+        bool entry_is_begin = (event->type == EVENT_BEGIN_TRANSACTION);
+        bool entry_is_commit = (event->type == EVENT_COMMIT_TRANSACTION);
+        uint64_t entry_lsn = read_hdr->lsn;
+        int depth_before_entry = txn_depth;
         bool keep_entry = false;
 
-        if (waiting_for_commit) {
-            if (entry_is_commit) {
-                entries_removed++;
-                truncated_through_lsn = entry_lsn;
-                waiting_for_commit = false;
+        if (!found_reference) {
+            if (entry_lsn < lsn) {
+                keep_entry = false;
+            } else if (entry_lsn == lsn) {
+                if (entry_is_begin || entry_is_commit) {
+                    log_error("[wal_truncate_commited] reference LSN %" PRIu64 " must reference a non-control event", lsn);
+                    free(event);
+                    free(entry_buf);
+                    close(temp_fd);
+                    unlink(temp_path);
+                    return -1;
+                }
+                found_reference = true;
+                pending_commits_after_reference = depth_before_entry;
+                keep_entry = true;
             } else {
-                log_error("[wal_truncate_commited] checkpoint LSN %" PRIu64 " is not the last event before COMMIT", lsn);
+                log_error("[wal_truncate_commited] reference LSN %" PRIu64 " not found", lsn);
                 free(event);
                 free(entry_buf);
                 close(temp_fd);
                 unlink(temp_path);
                 return -1;
-            }
-        } else if (entry_lsn < lsn) {
-            entries_removed++;
-            truncated_through_lsn = entry_lsn;
-        } else if (entry_lsn == lsn) {
-            if (entry_is_begin || entry_is_commit) {
-                log_error("[wal_truncate_commited] reference LSN %" PRIu64 " must reference a non-control event", lsn);
-                free(event);
-                free(entry_buf);
-                close(temp_fd);
-                unlink(temp_path);
-                return -1;
-            }
-
-            if (in_transaction) {
-                keep_entry = true;
-                waiting_for_commit = true;
-            } else {
-                keep_entry = true;
             }
         } else {
-            keep_entry = true;
+            if (pending_commits_after_reference > 0) {
+                if (!entry_is_commit) {
+                    log_error("[wal_truncate_commited] checkpoint LSN %" PRIu64 " is not terminal in nested transaction", lsn);
+                    free(event);
+                    free(entry_buf);
+                    close(temp_fd);
+                    unlink(temp_path);
+                    return -1;
+                }
+                keep_entry = false;
+                pending_commits_after_reference--;
+            } else {
+                keep_entry = true;
+            }
+        }
+
+        if (entry_is_begin) {
+            txn_depth++;
+        } else if (entry_is_commit) {
+            txn_depth--;
+            if (txn_depth < 0) {
+                log_error("[wal_truncate_commited] unexpected commit at lsn=%" PRIu64, entry_lsn);
+                free(event);
+                free(entry_buf);
+                close(temp_fd);
+                unlink(temp_path);
+                return -1;
+            }
         }
 
         if (keep_entry) {
@@ -550,29 +580,9 @@ int wal_truncate_commited(Wal *wal, uint64_t lsn) {
             new_end_offset += total_entry_size;
             entries_kept++;
         } else {
-            log_debug("[wal_truncate_commited] Removing entry with LSN %"PRIu64, entry_lsn);
-        }
-
-        if (entry_is_begin) {
-            if (in_transaction) {
-                log_error("[wal_truncate_commited] nested transaction begin at lsn=%" PRIu64, entry_lsn);
-                free(event);
-                free(entry_buf);
-                close(temp_fd);
-                unlink(temp_path);
-                return -1;
-            }
-            in_transaction = true;
-        } else if (entry_is_commit) {
-            if (!in_transaction && !waiting_for_commit) {
-                log_error("[wal_truncate_commited] unexpected commit at lsn=%" PRIu64, entry_lsn);
-                free(event);
-                free(entry_buf);
-                close(temp_fd);
-                unlink(temp_path);
-                return -1;
-            }
-            in_transaction = false;
+            entries_removed++;
+            truncated_through_lsn = entry_lsn;
+            log_debug("[wal_truncate_commited] Removing entry with LSN %" PRIu64, entry_lsn);
         }
 
         free(event);
@@ -580,8 +590,20 @@ int wal_truncate_commited(Wal *wal, uint64_t lsn) {
         offset += total_entry_size;
     }
 
-    if (waiting_for_commit) {
+    if (!found_reference) {
+        log_error("[wal_truncate_commited] reference LSN %" PRIu64 " not found", lsn);
+        close(temp_fd);
+        unlink(temp_path);
+        return -1;
+    }
+    if (pending_commits_after_reference > 0) {
         log_error("[wal_truncate_commited] checkpoint LSN %" PRIu64 " ends inside an unclosed transaction", lsn);
+        close(temp_fd);
+        unlink(temp_path);
+        return -1;
+    }
+    if (txn_depth != 0) {
+        log_error("[wal_truncate_commited] WAL contains unbalanced transactions");
         close(temp_fd);
         unlink(temp_path);
         return -1;
