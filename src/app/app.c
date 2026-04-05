@@ -36,6 +36,7 @@ static const char *APP_META_MULTI_TASKING = "multi_tasking";
 static const char *CONTEXT_META_NAME = ".meta";
 static const char *CONTEXT_META_SHELL = "shell";
 static const char *CONTEXT_META_WIKI_PREFIX = "wiki_prefix"; // Metadata key for wiki URL prefix
+static const char *CONTEXT_META_SEARCH_TEMPLATE_PREFIX = "search_template_"; 
 static const char *CONTEXT_META_CODE_PROJECT_ROOT = "project_root"; // Metadata key for code project root path
 static const char *CONTEXT_META_ASK_AI_CMD = "ask_ai";
 static const char *CONTEXT_META_PAGE = "page"; // page URL
@@ -2437,6 +2438,50 @@ void handle_search_prev(AppState *app){
 }
 
 static void handle_search_engine(AppState *app) {
+    TreeNode parent = tree_node_parent(app->tree_overlay, app->ui->current_node);
+    const char *parent_text = tree_node_text(parent);
+    char search_template_meta_key[64];
+    snprintf(search_template_meta_key, sizeof(search_template_meta_key), "%s%s", CONTEXT_META_SEARCH_TEMPLATE_PREFIX, parent_text);
+    TreeNode search_template_node = context_metadata_get(app, app->ui->current_node, search_template_meta_key);
+    char search_template[64];
+    snprintf(search_template, sizeof(search_template), "{%s}", parent_text);
+    if(!tree_node_is_null(search_template_node)){
+        if(strstr(tree_node_text(search_template_node), search_template) == NULL){
+            log_warn("handle_search_engine: Search template for parent node '%s' does not contain variable '%s'", parent_text, search_template);
+            ui_info_set_message(app->ui, "Search template for parent node '%s' does not contain variable '%s', using default search engine", parent_text, search_template);
+            goto default_search_engine;
+        }
+        UriTemplateVar vars[] = {
+            {
+                .name = parent_text,
+                .value = tree_node_text(app->ui->current_node)
+            }
+        };
+        char rendered[2048];
+        int r = uri_template_expand(tree_node_text(search_template_node), vars, sizeof(vars)/sizeof(vars[0]),
+         rendered, sizeof(rendered));
+        if(r != 0){
+            log_warn("handle_search_engine: Failed to expand search template for parent node '%s'", parent_text);
+            ui_info_set_message(app->ui, "Failed to expand search template for parent node '%s', using default search engine", parent_text);
+            goto default_search_engine;
+        }
+        log_debug("[handle_search_engine] Opening URL from search template: %s", rendered);
+        pid_t pid;
+        char *argv[] = {
+            "open",
+            rendered,
+            NULL
+        };
+        r = posix_spawnp(&pid, "open", NULL, NULL, argv, NULL);
+        if (r != 0) {
+            log_error("handle_search_engine: Failed to spawn process to open URL from search template");
+            ui_info_set_message(app->ui, "Failed to open URL from search template");
+        }
+        log_debug("[handle_search_engine] Spawned process with PID: %d to open URL from search template", pid);
+        return;
+    }
+
+default_search_engine:
     const char *url_format = "https://www.google.com/search?q=%.*s";
     const char *query = tree_node_text(app->ui->current_node);
     int query_len = strlen(query);
@@ -2558,6 +2603,52 @@ static void handle_open_resource_link(AppState *app){
     return;
 
 not_MediaWiki_style_ref:
+
+// parent node determines the type of resource link
+    snprintf(resource_template_meta_key, sizeof(resource_template_meta_key), "source_%s", parent_text);
+    resource_key = resource_template_meta_key + strlen("source_");
+    resource_template_node = context_metadata_get(app, current, resource_template_meta_key);
+    if(tree_node_is_null(resource_template_node)){
+        goto special_parent_type;
+    }
+    resource_template = tree_node_text(resource_template_node);
+    char template_var_name[64];
+    snprintf(template_var_name, sizeof(template_var_name), "{%s}", parent_text);
+    if(strstr(resource_template, template_var_name) == NULL){
+        log_warn("handle_open_resource_link: Resource template for parent node '%s' does not contain variable '%s'", parent_text, template_var_name);
+        ui_info_set_message(app->ui, "Resource template for parent node '%s' does not contain variable '%s'", parent_text, template_var_name);
+        goto special_parent_type;
+    }
+    resource_id = tree_node_text(current);
+    UriTemplateVar utv[] = {
+        {
+            .name = resource_key,
+            .value = resource_id
+        }
+    };
+    r = uri_template_expand(resource_template, utv, sizeof(utv)/sizeof(utv[0]), rendered, sizeof(rendered));
+    if(r == 0){
+        char *argv[] = {
+            "open",
+            rendered,
+            NULL
+        };
+        r = posix_spawnp(&pid, "open", NULL, NULL, argv, NULL);
+        if (r != 0) {
+            log_error("handle_open_resource_link: Failed to spawn process to open resource link with parent-based template");
+            return;
+        }
+        log_debug("[handle_open_resource_link] Spawned process with PID: %d to open resource link with parent-based template", pid);
+        return;
+    }else{
+        log_error("handle_open_resource_link: Failed to expand resource template based on parent node '%s'", parent_text);
+        ui_info_set_message(app->ui, "Failed to expand resource template based on parent node '%s'", parent_text);
+        return;
+    }
+
+
+// code / vi
+special_parent_type:
     if(strcmp(parent_text, CONTEXT_CODE_RESOURCE) == 0){
         const char *code_path_with_line = tree_node_text(current);
         int code_path_with_line_len = strlen(code_path_with_line);
