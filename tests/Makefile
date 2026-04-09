@@ -1,6 +1,11 @@
 CC := gcc
 CFLAGS := -g -Wall -Wextra -std=c11 -I../src -D_XOPEN_SOURCE=700
 
+# Keep test build macros aligned with root build; needed for Darwin/BSD APIs like flock.
+ifeq ($(shell uname -s),Darwin)
+CFLAGS += -D_DARWIN_C_SOURCE
+endif
+
 QUEUE_SRCS := test_queue.c ../src/utils/queue.c
 QUEUE_OBJS := $(QUEUE_SRCS:.c=.o)
 QUEUE_TARGET := queue_test

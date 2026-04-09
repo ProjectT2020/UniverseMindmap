@@ -225,7 +225,7 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
             input.type = UO_JUMP_BACK;
             break;
         case 0x1d: // Ctrl+]
-            input.type = UO_JUMP_KEYWORD_DEFINITION;
+            input.type = UO_JUMP_KEYWORD_GLOBAL_DEFINITION;
             break;
         case 'y':
             input.type = UO_COPY_SUBTREE;

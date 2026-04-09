@@ -491,6 +491,48 @@ TreeNode operate_search_next(Operate *operate, TreeNode start_node){
     return (TreeNode){ .kind = TREE_NODE_NULL };
 }
 
+TreeNode operate_bfs_search(Operate *operate, TreeNode start_node, const char *search_term,
+    bool (*filter)(TreeNode node, void *ctx), void *filter_ctx
+){
+    if (!operate || tree_node_is_null(start_node) || !search_term || !filter) {
+        return (TreeNode){ .kind = TREE_NODE_NULL };
+    }
+
+    TreeOverlay *ov = operate->overlay;
+    Queue *queue = create_queue(1024);
+    if (!queue) {
+        return (TreeNode){ .kind = TREE_NODE_NULL };
+    }
+
+    queue_enqueue(queue, (void *)(uintptr_t)tree_node_id(start_node));
+
+    while (!queue_is_empty(queue)) {
+        uint64_t node_id = (uint64_t)(uintptr_t)queue_dequeue(queue);
+        TreeNode node = tree_find_by_id(ov, node_id);
+        if (tree_node_is_null(node)) {
+            continue;
+        }
+
+        if (!filter(node, filter_ctx)) {
+            continue;
+        }
+
+        if (strcmp(tree_node_text(node), search_term) == 0) {
+            queue_destroy(queue);
+            return node;
+        }
+
+        TreeNode child = tree_node_first_child(ov, node);
+        while (!tree_node_is_null(child)) {
+            queue_enqueue(queue, (void *)(uintptr_t)tree_node_id(child));
+            child = tree_node_next_sibling(ov, child);
+        }
+    }
+
+    queue_destroy(queue);
+    return (TreeNode){ .kind = TREE_NODE_NULL };
+}
+
 TreeNode operate_search_next_in_subtree(Operate *operate, TreeNode start_node, const char *search_term,
     bool (*filter)(TreeNode node, void *ctx), void *filter_ctx
 ){

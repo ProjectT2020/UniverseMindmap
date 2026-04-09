@@ -2884,17 +2884,84 @@ special_parent_type:
 /**
  * return: 0: found; 1: not found; -1: error
  */
+static TreeNode search_subtree_with_filter(
+    AppState *app,
+    TreeNode start_node,
+    const char *search_term,
+    TreeNode skip_node,
+    bool (*filter)(TreeNode node, void *ctx),
+    void *filter_ctx
+) {
+    if (tree_node_is_null(start_node)) {
+        return (TreeNode){ .kind = TREE_NODE_NULL };
+    }
+
+    if (tree_node_id(start_node) != tree_node_id(skip_node)
+        && filter(start_node, filter_ctx)
+        && strcmp(tree_node_text(start_node), search_term) == 0) {
+        return start_node;
+    }
+
+    TreeNode child = tree_node_first_child(app->tree_overlay, start_node);
+    while (!tree_node_is_null(child)) {
+        if (tree_node_id(child) != tree_node_id(skip_node)) {
+            TreeNode r = search_subtree_with_filter(
+                app,
+                child,
+                search_term,
+                (TreeNode){ .kind = TREE_NODE_NULL },
+                filter,
+                filter_ctx
+            );
+            if (!tree_node_is_null(r)) {
+                return r;
+            }
+        }
+        child = tree_node_next_sibling(app->tree_overlay, child);
+    }
+
+    return (TreeNode){ .kind = TREE_NODE_NULL };
+}
+
 static int handle_jump_hierachy_definition(AppState *app, TreeNode subtree_root, const char *keywords,
     bool (*filter)(TreeNode node, void *ctx), void *filter_ctx
 ) {
+    if (tree_node_is_null(subtree_root) || !keywords || !filter) {
+        return -1;
+    }
+
     char *next_key_word = strchr(keywords, '|');
     int keyword_len = next_key_word ? (next_key_word - keywords) : strlen(keywords);
     char search_term[256];
     snprintf(search_term, sizeof(search_term), "[%.*s]", keyword_len, keywords);
-    log_debug("handle_jump_hierachy_definition: Searching for keyword '%s' in subtree rooted at node id=%lu", search_term, tree_node_id(subtree_root));
-    TreeNode result = operate_search_next_in_subtree(app->operate, subtree_root, search_term, filter, filter_ctx);
+
+    // For initial lookup, prefer nearest context around current node first.
+    TreeNode anchor = subtree_root;
+    if (tree_node_id(subtree_root) == tree_node_id(app->tree_overlay->root)) {
+        anchor = app->ui->current_node;
+    }
+
+    TreeNode skip_node = (TreeNode){ .kind = TREE_NODE_NULL };
+    TreeNode parent = anchor;
+    TreeNode result = (TreeNode){ .kind = TREE_NODE_NULL };
+
+    while (!tree_node_is_null(parent)) {
+        log_debug(
+            "handle_jump_hierachy_definition: Searching keyword '%s' from node id=%lu",
+            search_term,
+            tree_node_id(parent)
+        );
+        result = search_subtree_with_filter(app, parent, search_term, skip_node, filter, filter_ctx);
+        if (!tree_node_is_null(result)) {
+            break;
+        }
+
+        skip_node = parent;
+        parent = tree_node_parent(app->tree_overlay, parent);
+    }
+
     if(tree_node_is_null(result)){
-        log_info("handle_jump_hierachy_definition: No match found for keyword '%s' in subtree rooted at node id=%lu", search_term, tree_node_id(subtree_root));
+        log_info("handle_jump_hierachy_definition: No match found for keyword '%s'", search_term);
         return 1;
     }
     if(next_key_word){
@@ -2956,6 +3023,27 @@ static void handle_jump_keyword_definition(AppState *app){
         log_info("No definition found for '%s'", tree_node_text(app->ui->current_node));
     }else{
         log_error("Error occurred while searching for definition for '%s'", tree_node_text(app->ui->current_node));
+    }
+}
+
+static void handle_jump_keyword_global_definition(AppState *app){
+    TreeNode current = app->ui->current_node;
+    TreeNode root = app->tree_overlay->root;
+    // bfs from root
+    char search_term[256];
+    snprintf(search_term, sizeof(search_term), "[%s]", tree_node_text(current));
+    log_debug("handle_jump_keyword_global_definition: Searching for global definition with keyword '%s'", search_term);
+    JumpDefinitionFilterContext filter_ctx = {
+        .app_metadata_node_id = tree_node_id(app_ensure_metadata_node(app->operate))
+    };
+    TreeNode result = operate_bfs_search(app->operate, root, search_term, jump_definition_filter, &filter_ctx);
+    if(tree_node_is_null(result)){
+        ui_info_set_message(app->ui, "No global definition found for '%s'", tree_node_text(current));
+        log_info("No global definition found for '%s'", tree_node_text(current));
+    }else{
+        update_current_with_history(app, result);
+        ui_info_set_message(app->ui, "Jumped to global definition for '%s'", tree_node_text(app->ui->current_node));
+        log_info("Jumped to global definition for '%s'", tree_node_text(app->ui->current_node));
     }
 }
 
@@ -3422,6 +3510,9 @@ void app_apply_event(AppState *app, UserOperation uo) {
         break;
     case UO_JUMP_KEYWORD_DEFINITION:
         handle_jump_keyword_definition(app);
+        break;
+    case UO_JUMP_KEYWORD_GLOBAL_DEFINITION:
+        handle_jump_keyword_global_definition(app);
         break;
 
     // task

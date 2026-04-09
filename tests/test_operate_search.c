@@ -76,10 +76,55 @@ static void test_search_respects_filter(void) {
     assert(tree_node_id(r) == tree_node_id(second));
 }
 
+static void test_bfs_search_prefers_shallower_match(void) {
+    TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_operate_bfs_level.umt");
+    assert(ov != NULL);
+
+    TreeNode root = ov->root;
+    TreeNode left = tree_add_first_child(ov, &root, "left");
+    TreeNode right = tree_add_sibling(ov, &left, "[target]");
+    TreeNode deep = tree_add_first_child(ov, &left, "[target]");
+    assert(!tree_node_is_null(left));
+    assert(!tree_node_is_null(right));
+    assert(!tree_node_is_null(deep));
+
+    Operate operate = {0};
+    operate.overlay = ov;
+
+    TreeNode r = operate_bfs_search(&operate, root, "[target]", filter_all, NULL);
+    assert(!tree_node_is_null(r));
+    assert(tree_node_id(r) == tree_node_id(right));
+}
+
+static void test_bfs_search_filter_blocks_branch(void) {
+    TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_operate_bfs_filter.umt");
+    assert(ov != NULL);
+
+    TreeNode root = ov->root;
+    TreeNode blocked = tree_add_first_child(ov, &root, "blocked");
+    TreeNode allowed = tree_add_sibling(ov, &blocked, "allowed");
+    TreeNode target_under_blocked = tree_add_first_child(ov, &blocked, "[target]");
+    TreeNode target_under_allowed = tree_add_first_child(ov, &allowed, "[target]");
+    assert(!tree_node_is_null(blocked));
+    assert(!tree_node_is_null(allowed));
+    assert(!tree_node_is_null(target_under_blocked));
+    assert(!tree_node_is_null(target_under_allowed));
+
+    Operate operate = {0};
+    operate.overlay = ov;
+
+    FilterCtx ctx = { .blocked_id = tree_node_id(blocked) };
+    TreeNode r = operate_bfs_search(&operate, root, "[target]", filter_exclude_id, &ctx);
+    assert(!tree_node_is_null(r));
+    assert(tree_node_id(r) == tree_node_id(target_under_allowed));
+}
+
 int main(void) {
     test_search_hits_first_child();
     test_search_in_empty_subtree_returns_null();
     test_search_respects_filter();
+    test_bfs_search_prefers_shallower_match();
+    test_bfs_search_filter_blocks_branch();
 
     printf("[PASS] operate search tests\n");
     return 0;

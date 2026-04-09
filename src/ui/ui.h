@@ -103,7 +103,8 @@ typedef struct {
         UO_SEARCH_ENGINE,
         UO_ASK_AI,
         UO_KEYWORD_LOOKUP,      // 'K' launch keywordprg <keyword>
-        UO_JUMP_KEYWORD_DEFINITION, // Ctrl-] jump to keyword definition
+        UO_JUMP_KEYWORD_DEFINITION, // gd
+        UO_JUMP_KEYWORD_GLOBAL_DEFINITION, // Ctrl-] jump to global definition
         UO_HIT_ENTER,            // user pressed Enter (\r) 
         UO_HIT_CTRL_J,            // user pressed Ctrl+J (\n)
         UO_HIT_SPACE,            // user pressed Space ( )

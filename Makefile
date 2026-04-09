@@ -2,6 +2,7 @@ CC      := gcc
 CFLAGS  := -g3 -O0 -Wall -Wextra -std=c11 -D_XOPEN_SOURCE=700 -I src -MMD -MP \
            -Werror=incompatible-pointer-types
 
+# On macOS, expose Darwin/BSD APIs (for example flock and LOCK_* constants).
 ifeq ($(shell uname -s),Darwin)
 CFLAGS += -D_DARWIN_C_SOURCE
 endif
