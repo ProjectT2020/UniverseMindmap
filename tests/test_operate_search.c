@@ -1,0 +1,86 @@
+#include <assert.h>
+#include <stdio.h>
+#include <stdint.h>
+
+#include "../src/wal/wal.h"
+#include "../src/operate/operate.h"
+#include "../src/tree/tree_overlay.h"
+
+typedef struct {
+    uint64_t blocked_id;
+} FilterCtx;
+
+static bool filter_all(TreeNode node, void *ctx) {
+    (void)node;
+    (void)ctx;
+    return true;
+}
+
+static bool filter_exclude_id(TreeNode node, void *ctx) {
+    FilterCtx *f = (FilterCtx *)ctx;
+    return tree_node_id(node) != f->blocked_id;
+}
+
+static void test_search_hits_first_child(void) {
+    TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_operate_search_first_child.umt");
+    assert(ov != NULL);
+
+    TreeNode root = ov->root;
+    TreeNode first = tree_add_first_child(ov, &root, "first-hit");
+    TreeNode second = tree_add_sibling(ov, &first, "second");
+    TreeNode nested = tree_add_first_child(ov, &second, "nested-hit");
+    assert(!tree_node_is_null(first));
+    assert(!tree_node_is_null(second));
+    assert(!tree_node_is_null(nested));
+
+    Operate operate = {0};
+    operate.overlay = ov;
+
+    TreeNode r1 = operate_search_next_in_subtree(&operate, root, "first-hit", filter_all, NULL);
+    assert(!tree_node_is_null(r1));
+    assert(tree_node_id(r1) == tree_node_id(first));
+
+    TreeNode r2 = operate_search_next_in_subtree(&operate, root, "nested-hit", filter_all, NULL);
+    assert(!tree_node_is_null(r2));
+    assert(tree_node_id(r2) == tree_node_id(nested));
+}
+
+static void test_search_in_empty_subtree_returns_null(void) {
+    TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_operate_search_empty.umt");
+    assert(ov != NULL);
+
+    Operate operate = {0};
+    operate.overlay = ov;
+
+    TreeNode root = ov->root;
+    TreeNode r = operate_search_next_in_subtree(&operate, root, "anything", filter_all, NULL);
+    assert(tree_node_is_null(r));
+}
+
+static void test_search_respects_filter(void) {
+    TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_operate_search_filter.umt");
+    assert(ov != NULL);
+
+    TreeNode root = ov->root;
+    TreeNode first = tree_add_first_child(ov, &root, "target");
+    TreeNode second = tree_add_sibling(ov, &first, "target");
+    assert(!tree_node_is_null(first));
+    assert(!tree_node_is_null(second));
+
+    Operate operate = {0};
+    operate.overlay = ov;
+
+    FilterCtx ctx = { .blocked_id = tree_node_id(first) };
+    TreeNode r = operate_search_next_in_subtree(&operate, root, "target", filter_exclude_id, &ctx);
+    assert(!tree_node_is_null(r));
+    assert(tree_node_id(r) == tree_node_id(second));
+}
+
+int main(void) {
+    test_search_hits_first_child();
+    test_search_in_empty_subtree_returns_null();
+    test_search_respects_filter();
+
+    printf("[PASS] operate search tests\n");
+    return 0;
+}

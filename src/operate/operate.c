@@ -499,36 +499,32 @@ TreeNode operate_search_next_in_subtree(Operate *operate, TreeNode start_node, c
     TreeNode current = tree_node_first_child_with_filter(ov, start_node, filter, filter_ctx);
     uint64_t start_id = tree_node_id(start_node);
 
-    bool from_child = false;
-    while (tree_node_id(current) != start_id) {
-        TreeNode next_node;
-        if(from_child){
-            next_node = tree_node_next_sibling_with_filter(ov, current, filter, filter_ctx);
-            if(tree_node_is_null(next_node)){
-                current = tree_node_parent(ov, current);
-                from_child = true;
-                continue;
-            }else{
-                from_child = false;
-            }
-        }else{
-            next_node = tree_node_first_child_with_filter(ov, current, filter, filter_ctx);
-            if(tree_node_is_null(next_node)){
-                next_node = tree_node_next_sibling_with_filter(ov, current, filter, filter_ctx);
-                if(tree_node_is_null(next_node)){
-                    current = tree_node_parent(ov, current);
-                    from_child = true;
-                    continue;
-                }
-            }
-        }
-
-        const char *node_text = tree_node_text(next_node);
+    while (!tree_node_is_null(current)) {
+        const char *node_text = tree_node_text(current);
         if (strcmp(node_text, search_term) == 0) {
-            return next_node; // Found exact match
+            return current; // Found exact match
         }
 
-        current = next_node;
+        // DFS within subtree rooted at start_node: child -> sibling -> backtrack.
+        TreeNode next_node = tree_node_first_child_with_filter(ov, current, filter, filter_ctx);
+        if (!tree_node_is_null(next_node)) {
+            current = next_node;
+            continue;
+        }
+
+        while (!tree_node_is_null(current)) {
+            if (tree_node_id(current) == start_id) {
+                return (TreeNode){ .kind = TREE_NODE_NULL };
+            }
+
+            next_node = tree_node_next_sibling_with_filter(ov, current, filter, filter_ctx);
+            if (!tree_node_is_null(next_node)) {
+                current = next_node;
+                break;
+            }
+
+            current = tree_node_parent(ov, current);
+        }
     }
 
     // No match found
