@@ -1109,3 +1109,89 @@ int operate_edit_history_record(Operate *operate, Event *event){
     }
     operate_commit_transaction(operate);
 }
+
+bool is_search_match(const char *node_text, const char *query){
+    if(strcmp(node_text, query) == 0){
+        return true; // exact match
+    }
+    int num_sqare_brackets = 0;
+    for(const char *p = node_text; *p; p++){
+        if(*p == '['){
+            num_sqare_brackets++;
+        }else{
+            break;
+        }
+    }
+    if(num_sqare_brackets > 0){
+        const char *text_without_left_brackets = node_text + num_sqare_brackets;
+        const char *s = strstr(text_without_left_brackets, query);
+        int len_without_left_brackets = strlen(text_without_left_brackets);
+        int len_query = strlen(query);
+        if( len_query + num_sqare_brackets == len_without_left_brackets
+        && s == text_without_left_brackets){
+            return true; // match after removing square brackets
+        }
+    }
+    return false;
+}
+
+/**
+ * return: 
+ */
+TreeNode operate_search_subtree(Operate *operate, TreeNode start_node, const char **keys, int nkeys, TreeNode skip_node){
+    const char *text = tree_node_text(start_node);
+    if(text[0] == '.' && strcmp(text, ".metadata") != 0){
+        // skip meta nodes
+        return (TreeNode){ .kind = TREE_NODE_NULL };
+    }
+    TreeNode child;
+    if(is_search_match(text, (char *)keys[0])){
+        if(nkeys == 1){
+            return start_node;
+        }
+        child = tree_node_first_child(operate->overlay, start_node);
+        while(!tree_node_is_null(child)){
+            TreeNode r = operate_search_subtree(operate, child, keys+1, nkeys - 1, (TreeNode){.kind = TREE_NODE_NULL});
+            if(!tree_node_is_null(r)){
+                return r;
+            }else{
+                child = tree_node_next_sibling(operate->overlay, child);
+            }
+        }
+        return (TreeNode){ .kind = TREE_NODE_NULL };
+    }
+    // if(nkeys == 0){
+        // only match leaf node
+        // return (TreeNode){ .kind = TREE_NODE_NULL };
+    // }
+    
+    child = tree_node_first_child(operate->overlay, start_node);
+    while(!tree_node_is_null(child)){
+        if(tree_node_id(child) != tree_node_id(skip_node)){
+            TreeNode r = operate_search_subtree(operate, child, keys, nkeys, (TreeNode){.kind = TREE_NODE_NULL});
+            if(!tree_node_is_null(r)){
+                return r;
+            }
+        }
+        child = tree_node_next_sibling(operate->overlay, child);
+    }
+    
+     return (TreeNode){ .kind = TREE_NODE_NULL };
+}
+
+TreeNode operate_search_hierachy_keys(Operate *operate, TreeNode current, const char **keys, int nkeys){
+    TreeNode child = (TreeNode){ .kind = TREE_NODE_NULL };
+    TreeNode parent = current;
+    while(!tree_node_is_null(parent)){
+        TreeNode r = operate_search_subtree(operate, parent, keys, nkeys, child);
+        if(!tree_node_is_null(r)){
+            return r;
+        }else{
+
+        }
+
+        child = parent;
+        parent = tree_node_parent(operate->overlay, parent);
+    }
+    return (TreeNode){ .kind = TREE_NODE_NULL };
+}

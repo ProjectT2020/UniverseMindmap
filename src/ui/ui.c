@@ -279,6 +279,9 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
 
             break;
         }
+        case 'v':
+            input.type = UO_VI_EDIT_NODE;
+            break;
         case 0x07: // Ctrl+G
             ctx->show_ancestors_in_one_line = !ctx->show_ancestors_in_one_line;
             break;
@@ -314,6 +317,9 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
                     break;
                 case 'd':
                     input.type = UO_JUMP_KEYWORD_DEFINITION;
+                    break;
+                case 'D':
+                    input.type = UO_OPEN_RESOURCE_LINK;
                     break;
                 case 'f':
                     input.type = UO_OPEN_RESOURCE_LINK;

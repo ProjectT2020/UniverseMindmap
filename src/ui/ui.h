@@ -85,6 +85,7 @@ typedef struct {
         UO_PASTE_FROM_SYSTEM_CLIPBOARD_AS_CHILDREN,
         UO_APPEND_NODE_TEXT,
         UO_EDIT_NODE,             // rename node
+        UO_VI_EDIT_NODE,         // enter vi-like edit mode for current node
         UO_JOIN_TEXT_WITHOUT_SPACE, // (gJ) join text with next sibling without adding space
 
         // mode switch

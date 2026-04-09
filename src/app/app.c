@@ -655,6 +655,14 @@ void handle_edit_node(AppState *app, TreeNode node, char *terminated_character){
 
 }
 
+void handle_vi_edit_node(AppState *app) {
+    log_debug("[handle_vi_edit_node] Entering vi-like edit mode for current node");
+    operate_edit_node(app->operate, app->ui->current_node);
+    app->ui->current_node = tree_find_by_id(app->tree_overlay, tree_node_id(app->ui->current_node));
+    log_debug("[handle_vi_edit_node] After edit: current_node id=%lu, kind=%d", 
+              tree_node_id(app->ui->current_node), app->ui->current_node.kind);
+}
+
 void handle_mark_as_definition(AppState *app) {
     UiContext *ui = app->ui;
     TreeNode current = ui->current_node;
@@ -2909,6 +2917,31 @@ static bool jump_definition_filter(TreeNode node, void *ctx){
 }
 
 static void handle_jump_keyword_definition(AppState *app){
+    TreeNode current = app->ui->current_node;
+    const char *current_text = tree_node_text(current);
+    char *keys_text = strdup(current_text);
+    char *hash_tag = strchr(keys_text, '#'); 
+    if(hash_tag != NULL){
+        hash_tag[0] = '\0';
+        char *key = keys_text;
+        hash_tag++;
+        char *keys[2] = {
+            key,
+            hash_tag
+        };
+        TreeNode r = operate_search_hierachy_keys(app->operate, current, (const char **)keys, 2);
+        free(keys_text);
+        if(tree_node_is_null(r)){
+            ui_info_set_message(app->ui, "No definition found for '%s'", current_text);
+            log_info("No definition found for '%s'", current_text);
+        }else{
+            update_current_with_history(app, r);
+            ui_info_set_message(app->ui, "Jumped to definition for '%s'", tree_node_text(app->ui->current_node));
+            log_info("Jumped to definition for '%s'", tree_node_text(app->ui->current_node));
+        }
+        return;
+    }
+    free(keys_text);
 
     JumpDefinitionFilterContext filter_ctx = {
         .app_metadata_node_id = tree_node_id(app_ensure_metadata_node(app->operate))
@@ -3164,6 +3197,9 @@ void app_apply_event(AppState *app, UserOperation uo) {
         }
         break;
     }
+    case UO_VI_EDIT_NODE:
+        handle_vi_edit_node(app);
+        break;
     case UO_MARK_AS_DEFINITION:
         handle_mark_as_definition(app);
         break;

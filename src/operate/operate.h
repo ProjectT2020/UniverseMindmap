@@ -77,4 +77,6 @@ int operate_output_ai_message();
 TreeNode operate_edit_history_last_record(Operate *operate, TreeNode edit_history_node);
 int operate_edit_history_record(Operate *operate, Event *e);
 
+TreeNode operate_search_hierachy_keys(Operate *operate, TreeNode current, const char **keys, int nkeys);
+
 #endif // OPERATE_H
