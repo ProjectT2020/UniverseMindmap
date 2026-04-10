@@ -86,4 +86,15 @@ void handle_redo(AppState *app);
 // app metadata management
 TreeNode app_metadata_key_node(Operate *operate, const char *key) ;
 
+#ifdef APP_TESTING
+int app_test_handle_jump_hierachy_definition(
+    AppState *app,
+    TreeNode subtree_root,
+    const char *keywords,
+    bool (*filter)(TreeNode node, void *ctx),
+    void *filter_ctx
+);
+bool app_test_jump_definition_filter(TreeNode node, void *ctx);
+#endif
+
 #endif // APP_H

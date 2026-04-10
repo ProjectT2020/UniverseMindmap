@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS := -g -Wall -Wextra -std=c11 -I../src -D_XOPEN_SOURCE=700
+CFLAGS := -g -Wall -Wextra -std=c11 -I../src -D_XOPEN_SOURCE=700 -DAPP_TESTING
 
 # Keep test build macros aligned with root build; needed for Darwin/BSD APIs like flock.
 ifeq ($(shell uname -s),Darwin)

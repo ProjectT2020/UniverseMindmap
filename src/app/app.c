@@ -2896,9 +2896,17 @@ static TreeNode search_subtree_with_filter(
         return (TreeNode){ .kind = TREE_NODE_NULL };
     }
 
-    if (tree_node_id(start_node) != tree_node_id(skip_node)
-        && filter(start_node, filter_ctx)
-        && strcmp(tree_node_text(start_node), search_term) == 0) {
+    if (!tree_node_is_null(skip_node)
+        && tree_node_id(start_node) == tree_node_id(skip_node)) {
+        return (TreeNode){ .kind = TREE_NODE_NULL };
+    }
+
+    // Prune the whole branch when filter rejects this node.
+    if (!filter(start_node, filter_ctx)) {
+        return (TreeNode){ .kind = TREE_NODE_NULL };
+    }
+
+    if (strcmp(tree_node_text(start_node), search_term) == 0) {
         return start_node;
     }
 
@@ -2980,8 +2988,27 @@ typedef struct {
 static bool jump_definition_filter(TreeNode node, void *ctx){
     JumpDefinitionFilterContext *filter_ctx = (JumpDefinitionFilterContext*) ctx;
     uint64_t metadata_node_id = filter_ctx->app_metadata_node_id;
-    return tree_node_id(node) != metadata_node_id;
+    if (tree_node_id(node) == metadata_node_id) {
+        return false;
+    }
+    return strcmp(tree_node_text(node), ".metadata") != 0;
 }
+
+#ifdef APP_TESTING
+int app_test_handle_jump_hierachy_definition(
+    AppState *app,
+    TreeNode subtree_root,
+    const char *keywords,
+    bool (*filter)(TreeNode node, void *ctx),
+    void *filter_ctx
+) {
+    return handle_jump_hierachy_definition(app, subtree_root, keywords, filter, filter_ctx);
+}
+
+bool app_test_jump_definition_filter(TreeNode node, void *ctx) {
+    return jump_definition_filter(node, ctx);
+}
+#endif
 
 static void handle_jump_keyword_definition(AppState *app){
     TreeNode current = app->ui->current_node;

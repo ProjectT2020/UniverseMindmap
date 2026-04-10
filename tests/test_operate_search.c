@@ -5,6 +5,9 @@
 #include "../src/wal/wal.h"
 #include "../src/operate/operate.h"
 #include "../src/tree/tree_overlay.h"
+#include "../src/app/app.h"
+#include "../src/ui/ui.h"
+#include "../src/utils/stack.h"
 
 typedef struct {
     uint64_t blocked_id;
@@ -119,12 +122,64 @@ static void test_bfs_search_filter_blocks_branch(void) {
     assert(tree_node_id(r) == tree_node_id(target_under_allowed));
 }
 
+typedef struct {
+    uint64_t app_metadata_node_id;
+} JumpDefinitionFilterContext;
+
+static void test_gd_hierarchy_filter_skips_dot_metadata(void) {
+    TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_gd_skip_metadata.umt");
+    assert(ov != NULL);
+
+    TreeNode root = ov->root;
+    TreeNode metadata = tree_add_first_child(ov, &root, ".metadata");
+    TreeNode defs = tree_add_sibling(ov, &metadata, "defs");
+    TreeNode current_parent = tree_add_sibling(ov, &defs, "current-parent");
+
+    TreeNode bad = tree_add_first_child(ov, &metadata, "[foo]");
+    TreeNode good = tree_add_first_child(ov, &defs, "[foo]");
+    TreeNode current = tree_add_first_child(ov, &current_parent, "foo");
+
+    assert(!tree_node_is_null(bad));
+    assert(!tree_node_is_null(good));
+    assert(!tree_node_is_null(current));
+
+    Operate operate = {0};
+    operate.overlay = ov;
+
+    UiContext ui = {0};
+    ui.current_node = current;
+
+    AppState app = {0};
+    app.tree_overlay = ov;
+    app.operate = &operate;
+    app.ui = &ui;
+    app.jump_back_stack = stack_create(32);
+    app.jump_forward_stack = stack_create(32);
+
+    JumpDefinitionFilterContext filter_ctx = { .app_metadata_node_id = 0 };
+    int r = app_test_handle_jump_hierachy_definition(
+        &app,
+        root,
+        "foo",
+        app_test_jump_definition_filter,
+        &filter_ctx
+    );
+
+    assert(r == 0);
+    assert(tree_node_id(app.ui->current_node) == tree_node_id(good));
+    assert(tree_node_id(app.ui->current_node) != tree_node_id(bad));
+
+    stack_destroy(app.jump_back_stack);
+    stack_destroy(app.jump_forward_stack);
+}
+
 int main(void) {
     test_search_hits_first_child();
     test_search_in_empty_subtree_returns_null();
     test_search_respects_filter();
     test_bfs_search_prefers_shallower_match();
     test_bfs_search_filter_blocks_branch();
+    test_gd_hierarchy_filter_skips_dot_metadata();
 
     printf("[PASS] operate search tests\n");
     return 0;
