@@ -842,6 +842,45 @@ int operate_fold_more(Operate *operate, TreeNode current, int fold_level){
     return 0;
 }
 
+int operate_expand_all_descendants(Operate *operate, TreeNode current){
+    Queue *queue = create_queue(1024);
+
+    TreeNode child = tree_node_first_child(operate->overlay, current);
+    while(!tree_node_is_null(child)){
+        queue_enqueue(queue, fold_level_context_create(child, 1));
+        child = tree_node_next_sibling(operate->overlay, child);
+    }
+
+    while(!queue_is_empty(queue)){
+        FoldLevelContext *ctx = queue_dequeue(queue);
+        TreeNode node = ctx->node;
+        free(ctx);
+
+        if(strcmp(tree_node_text(node), ".meta") == 0){
+            continue;
+        }
+
+        if(tree_node_is_collapsed(node)){
+            Event *event = event_create_expand_node(tree_node_id(node));
+            int r = operate_commit_event(operate, event);
+            if(r != 0){
+                log_warn("operate_expand_all_descendants: Failed to commit EXPAND_NODE event for node id=%" PRIu64, tree_node_id(node));
+                queue_destroy(queue);
+                return -1;
+            }
+        }
+
+        TreeNode child = tree_node_first_child(operate->overlay, node);
+        while(!tree_node_is_null(child)){
+            queue_enqueue(queue, fold_level_context_create(child, 1));
+            child = tree_node_next_sibling(operate->overlay, child);
+        }
+    }
+
+    queue_destroy(queue);
+    return 0;
+}
+
 
 static key_t operate_get_ai_message_queue_key() {
     const char *exe_path = os_get_executable_path();

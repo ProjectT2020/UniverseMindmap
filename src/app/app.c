@@ -839,6 +839,21 @@ void handle_reduce_folding(AppState *app) {
     ui_center_view_on_current(app->ui);
 }
 
+void handle_expand_all_descendants(AppState *app) {
+    log_debug("[handle_expand_all_descendants] Expanding all descendants (except .meta) of current node");
+    UiContext *ui = app->ui;
+    TreeNode current = ui->current_node;
+
+    handle_unfold_node(app);
+
+    int r = operate_expand_all_descendants(app->operate, current);
+    if(r != 0){
+        log_warn("handle_expand_all_descendants: Failed to expand all descendants");
+    }
+
+    ui_center_view_on_current(app->ui);
+}
+
 void handle_fold_level1(AppState *app){
     log_debug("[handle_fold_level1] Setting fold level 1 of current node");
     UiContext *ui = app->ui;
@@ -3343,6 +3358,9 @@ void app_apply_event(AppState *app, UserOperation uo) {
         break;
     case UO_REDUCE_FOLDING:
         handle_reduce_folding(app);
+        break;
+    case UO_EXPAND_ALL_DESCENDANTS:
+        handle_expand_all_descendants(app);
         break;
 
     // edit

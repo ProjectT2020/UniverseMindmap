@@ -64,6 +64,7 @@ typedef struct {
         UO_FOLD_MORE,             // zm: fold more
         UO_FOLD_LEVEL_1,         // zM: fold to level 1
         UO_REDUCE_FOLDING,         // zr: reveal more
+        UO_EXPAND_ALL_DESCENDANTS, // zR: expand all descendants (except .meta)
 
         // view
         UO_CENTER_VIEW,           // z. : center view on current node

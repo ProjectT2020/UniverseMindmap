@@ -173,6 +173,43 @@ static void test_gd_hierarchy_filter_skips_dot_metadata(void) {
     stack_destroy(app.jump_forward_stack);
 }
 
+static void test_expand_all_descendants_skips_meta_subtree(void) {
+    TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_expand_all_descendants.umt");
+    assert(ov != NULL);
+
+    Wal *wal = wal_open("/tmp/um_expand_all_descendants.wal");
+    assert(wal != NULL);
+
+    Operate *operate = operate_create(wal, ov);
+    assert(operate != NULL);
+
+    TreeNode root = ov->root;
+    TreeNode current = tree_add_first_child(ov, &root, "current");
+    TreeNode meta = tree_add_first_child(ov, &current, ".meta");
+    TreeNode child = tree_add_sibling(ov, &meta, "child");
+    TreeNode meta_nested = tree_add_first_child(ov, &meta, "meta-nested");
+    TreeNode grandchild = tree_add_first_child(ov, &child, "grandchild");
+
+    assert(!tree_node_is_null(current));
+    assert(!tree_node_is_null(meta));
+    assert(!tree_node_is_null(child));
+    assert(!tree_node_is_null(meta_nested));
+    assert(!tree_node_is_null(grandchild));
+
+    assert(operate_fold_node(operate, meta) == 0);
+    assert(operate_fold_node(operate, child) == 0);
+    assert(tree_node_is_collapsed(meta));
+    assert(tree_node_is_collapsed(child));
+
+    assert(operate_expand_all_descendants(operate, current) == 0);
+
+    assert(tree_node_is_collapsed(meta));
+    assert(!tree_node_is_collapsed(child));
+
+    operate_destroy(operate);
+    wal_close(wal);
+}
+
 int main(void) {
     test_search_hits_first_child();
     test_search_in_empty_subtree_returns_null();
@@ -180,6 +217,7 @@ int main(void) {
     test_bfs_search_prefers_shallower_match();
     test_bfs_search_filter_blocks_branch();
     test_gd_hierarchy_filter_skips_dot_metadata();
+    test_expand_all_descendants_skips_meta_subtree();
 
     printf("[PASS] operate search tests\n");
     return 0;

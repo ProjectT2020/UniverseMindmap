@@ -126,6 +126,9 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
             case 'M':
                 input.type = UO_FOLD_LEVEL_1;  // zM fold to level 1
                 break;
+            case 'R':
+                input.type = UO_EXPAND_ALL_DESCENDANTS; // zR expand all descendants except .meta
+                break;
             case 'T':
                 input.type = UO_INDEX_FROM_ROOT;
                 break;

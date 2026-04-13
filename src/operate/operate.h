@@ -69,6 +69,7 @@ TreeNode operate_search_next_in_subtree(Operate *operate, TreeNode start_node, c
 int operate_edit_node(Operate *operate, TreeNode node);
 int operate_reduce_folding(Operate *operate, TreeNode current, int fold_level);
 int operate_fold_more(Operate *operate, TreeNode current, int fold_level);
+int operate_expand_all_descendants(Operate *operate, TreeNode current);
 int operate_fold_node(Operate *operate, TreeNode node);
 
 // external
