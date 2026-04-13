@@ -79,6 +79,48 @@ static void test_search_respects_filter(void) {
     assert(tree_node_id(r) == tree_node_id(second));
 }
 
+static void test_search_next_exact_matches_full_text_only(void) {
+    TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_operate_search_next_exact.umt");
+    assert(ov != NULL);
+
+    TreeNode root = ov->root;
+    TreeNode start = tree_add_first_child(ov, &root, "alpha");
+    TreeNode partial = tree_add_sibling(ov, &start, "alpha beta");
+    TreeNode exact = tree_add_sibling(ov, &partial, "alpha");
+
+    assert(!tree_node_is_null(start));
+    assert(!tree_node_is_null(partial));
+    assert(!tree_node_is_null(exact));
+
+    Operate operate = {0};
+    operate.overlay = ov;
+
+    TreeNode r = operate_search_next_exact(&operate, start, "alpha");
+    assert(!tree_node_is_null(r));
+    assert(tree_node_id(r) == tree_node_id(exact));
+}
+
+static void test_search_prev_exact_matches_full_text_only(void) {
+    TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_operate_search_prev_exact.umt");
+    assert(ov != NULL);
+
+    TreeNode root = ov->root;
+    TreeNode first_exact = tree_add_first_child(ov, &root, "topic");
+    TreeNode middle = tree_add_sibling(ov, &first_exact, "topic details");
+    TreeNode second_exact = tree_add_sibling(ov, &middle, "topic");
+
+    assert(!tree_node_is_null(first_exact));
+    assert(!tree_node_is_null(middle));
+    assert(!tree_node_is_null(second_exact));
+
+    Operate operate = {0};
+    operate.overlay = ov;
+
+    TreeNode r = operate_search_prev_exact(&operate, second_exact, "topic");
+    assert(!tree_node_is_null(r));
+    assert(tree_node_id(r) == tree_node_id(first_exact));
+}
+
 static void test_bfs_search_prefers_shallower_match(void) {
     TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_operate_bfs_level.umt");
     assert(ov != NULL);
@@ -214,6 +256,8 @@ int main(void) {
     test_search_hits_first_child();
     test_search_in_empty_subtree_returns_null();
     test_search_respects_filter();
+    test_search_next_exact_matches_full_text_only();
+    test_search_prev_exact_matches_full_text_only();
     test_bfs_search_prefers_shallower_match();
     test_bfs_search_filter_blocks_branch();
     test_gd_hierarchy_filter_skips_dot_metadata();

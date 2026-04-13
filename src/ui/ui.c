@@ -224,6 +224,12 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
             input.type = UO_SEARCH_PREV;
             break;
         }
+        case '*':
+            input.type = UO_SEARCH_NEXT_EXACT;
+            break;
+        case '#':
+            input.type = UO_SEARCH_PREV_EXACT;
+            break;
         case 15: // Ctrl+O - jump back
             input.type = UO_JUMP_BACK;
             break;

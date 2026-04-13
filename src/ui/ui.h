@@ -98,6 +98,8 @@ typedef struct {
         UO_SEARCH_BACKWARD,       // search backward
         UO_SEARCH_NEXT,           // next search result
         UO_SEARCH_PREV,           // previous search result
+        UO_SEARCH_NEXT_EXACT,     // next exact match for current node text
+        UO_SEARCH_PREV_EXACT,     // previous exact match for current node text
 
         // action
         UO_OPEN_RESOURCE_LINK,   // open resource link (https:// or file://)

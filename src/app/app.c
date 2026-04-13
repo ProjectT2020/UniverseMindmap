@@ -2460,6 +2460,46 @@ void handle_search_prev(AppState *app){
     }
 }
 
+void handle_search_next_exact(AppState *app){
+    Operate *operate = app->operate;
+    const char *query = tree_node_text(app->ui->current_node);
+    if(!query || strlen(query) == 0){
+        ui_info_set_message(app->ui, "Current node text is empty");
+        return;
+    }
+
+    snprintf(operate->search_query, sizeof(operate->search_query), "%s", query);
+    TreeNode result = operate_search_next_exact(operate, app->ui->current_node, query);
+    if(tree_node_is_null(result)){
+        ui_info_set_message(app->ui, "No next exact matches for '%s'", query);
+        log_info("No next exact matches for query '%s'", query);
+    }else{
+        update_current_with_history(app, result);
+        ui_info_set_message(app->ui, "Found exact match '%s' at node id=%lu", query, tree_node_id(result));
+        log_info("Found next exact match for query '%s' at node id=%lu", query, tree_node_id(result));
+    }
+}
+
+void handle_search_prev_exact(AppState *app){
+    Operate *operate = app->operate;
+    const char *query = tree_node_text(app->ui->current_node);
+    if(!query || strlen(query) == 0){
+        ui_info_set_message(app->ui, "Current node text is empty");
+        return;
+    }
+
+    snprintf(operate->search_query, sizeof(operate->search_query), "%s", query);
+    TreeNode result = operate_search_prev_exact(operate, app->ui->current_node, query);
+    if(tree_node_is_null(result)){
+        ui_info_set_message(app->ui, "No previous exact matches for '%s'", query);
+        log_info("No previous exact matches for query '%s'", query);
+    }else{
+        update_current_with_history(app, result);
+        ui_info_set_message(app->ui, "Found exact match '%s' at node id=%lu", query, tree_node_id(result));
+        log_info("Found previous exact match for query '%s' at node id=%lu", query, tree_node_id(result));
+    }
+}
+
 static void handle_search_engine(AppState *app) {
     TreeNode parent = tree_node_parent(app->tree_overlay, app->ui->current_node);
     const char *parent_text = tree_node_text(parent);
@@ -3544,6 +3584,12 @@ void app_apply_event(AppState *app, UserOperation uo) {
         break;
     case UO_SEARCH_PREV:
         handle_search_prev(app);
+        break;
+    case UO_SEARCH_NEXT_EXACT:
+        handle_search_next_exact(app);
+        break;
+    case UO_SEARCH_PREV_EXACT:
+        handle_search_prev_exact(app);
         break;
     
         // external

@@ -605,6 +605,54 @@ TreeNode operate_search_prev(Operate *operate, TreeNode start_node){
     return (TreeNode){ .kind = TREE_NODE_NULL };// not found
 }
 
+TreeNode operate_search_next_exact(Operate *operate, TreeNode start_node, const char *query){
+    if (!operate || tree_node_is_null(start_node) || !query || query[0] == '\0') {
+        return (TreeNode){ .kind = TREE_NODE_NULL };
+    }
+
+    TreeOverlay *ov = operate->overlay;
+    TreeNode current = start_node;
+
+    while (true) {
+        TreeNode next_node = tree_node_dfs_next(ov, current);
+        if (tree_node_is_null(next_node)) {
+            break;
+        }
+
+        if (strcmp(tree_node_text(next_node), query) == 0) {
+            return next_node;
+        }
+
+        current = next_node;
+    }
+
+    return (TreeNode){ .kind = TREE_NODE_NULL };
+}
+
+TreeNode operate_search_prev_exact(Operate *operate, TreeNode start_node, const char *query){
+    if (!operate || tree_node_is_null(start_node) || !query || query[0] == '\0') {
+        return (TreeNode){ .kind = TREE_NODE_NULL };
+    }
+
+    TreeOverlay *ov = operate->overlay;
+    TreeNode current = start_node;
+
+    while (true) {
+        TreeNode prev_node = tree_node_dfs_prev(ov, current);
+        if (tree_node_is_null(prev_node)) {
+            break;
+        }
+
+        if (strcmp(tree_node_text(prev_node), query) == 0) {
+            return prev_node;
+        }
+
+        current = prev_node;
+    }
+
+    return (TreeNode){ .kind = TREE_NODE_NULL };
+}
+
 int operate_edit_node(Operate *operate, TreeNode node){
     const char *old_text = tree_node_text(node);
     // open tmp file with old_text
