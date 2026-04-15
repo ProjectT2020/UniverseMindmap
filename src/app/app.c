@@ -2417,7 +2417,7 @@ void handle_search_backward(AppState *app){
         ui_info_set_message(app->ui, "No previous matches for '%s'", query);
         log_info("No previous matches found for query '%s'", query);
     }else{
-        app->ui->current_node = result;
+        update_current_with_history(app, result);
         ui_info_set_message(app->ui, "Found match for '%s' at node id=%lu", query, tree_node_id(result));
         log_info("Found match for query '%s' at node id=%lu", query, tree_node_id(result));
     }
