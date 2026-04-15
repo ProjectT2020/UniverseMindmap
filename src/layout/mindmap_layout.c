@@ -410,7 +410,11 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
         } else if(is_first_child){
             // first child, draw ┌
             if(link_x >=0 && link_y >=0 && link_y < view_h){
-                if(text_render_y == parent_text_render_y){
+                TreeNode sibling = ui_next_visible_sibling(ctx, n);
+                if(tree_node_is_null(sibling)){
+                    // only child, draw ─
+                    printf("\033[%d;%dH─", link_y + 1, link_x + 1);
+                } else if(text_render_y == parent_text_render_y){
                     printf("\033[%d;%dH┬", link_y + 1, link_x + 1);
                 }else{
                     printf("\033[%d;%dH╭", link_y + 1, link_x + 1);
@@ -487,22 +491,6 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
         child_position++;
     }
     
-    // render '+'/'-' connector
-    TreeNode first_visible_child = ui_first_visible_child(ctx, n);
-    if (!tree_node_is_null(first_visible_child) && text_render_x + text_w + 1 >= 1  && text_render_x + text_w + 1 < view_w) {
-        TreeNode last_visible_child = ui_last_visible_child(ctx, n);
-        TreeNode next_sibling = ui_next_visible_sibling(ctx, first_visible_child);
-        if(tree_node_id(first_visible_child) == tree_node_id(last_visible_child)){
-            if(!marked_node && !(is_current_node(ctx, n) && ctx->show_child_position)){
-                printf("\033[%d;%dH ─", text_render_y + 1, text_render_x + text_w + 1);
-            }
-        }else if(tree_node_id(next_sibling) == tree_node_id(last_visible_child)){
-            // printf("\033[%d;%dH ┬", text_render_y + 1, text_render_x + text_w + 1);
-        }else{
-            // printf("\033[%d;%dH ┼", text_render_y + 1, text_render_x + text_w + 1);
-        }
-    }
-
 }
 
 void mindmap_layout_and_render(UiContext *ctx) {
