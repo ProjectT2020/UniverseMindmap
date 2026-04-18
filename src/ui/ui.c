@@ -385,6 +385,9 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
                     else if(strcmp("ac", two_char_command) == 0){ 
                         input.type = UO_AS_CURRENT_TASK;
                     }
+                    else if(strcmp("cd", two_char_command) == 0){
+                        input.type = UO_CURRENT_TASK_JUMP_DEFINITION;
+                    }
                     else {
                         log_info("Unknown two-character command: \\%s\n", two_char_command);
                     }

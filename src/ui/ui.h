@@ -42,6 +42,7 @@ typedef struct {
         UO_CREATE_SIBLING_TASK,
         UO_FINISH_TASK,
         UO_AS_CURRENT_TASK,
+        UO_CURRENT_TASK_JUMP_DEFINITION,
         UO_NEXT_TASK,
         UO_PREV_TASK,
 

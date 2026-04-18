@@ -1671,22 +1671,23 @@ static void handle_move_focus_most_left_lower(AppState *app){
     log_debug("[handle_move_focus_most_left_lower] Moved focus to most left lower node id=%lu", tree_node_id(app->ui->current_node));
 }
 
-static void handle_move_focus_current_task(AppState *app) {
+static bool handle_move_focus_current_task(AppState *app) {
     TreeNode current_task_node = app_metadata_value_node(app, APP_META_CURRENT_TASK );
     if(tree_node_is_null(current_task_node)){
         log_info("No current task set, cannot move focus to current task");
         ui_info_set_message(app->ui, "No current task set");
-        return;
+        return false;
     }
     uint64_t node_id = strtoull(tree_node_text(current_task_node), NULL, 10);
     TreeNode node = tree_find_by_id(app->tree_overlay, node_id);
     if(tree_node_is_null(node)){
         log_warn("Current task node id=%lu not found", node_id);
         ui_info_set_message(app->ui, "Current task node not found");
-        return;
+        return false;
     }
     update_current_with_history(app, node);
     log_debug("[handle_move_focus_current_task] Moved focus to current task node id=%lu", tree_node_id(app->ui->current_node));
+    return true;
 }
 
 static void handle_jump_back(AppState *app) {
@@ -3516,6 +3517,11 @@ void app_apply_event(AppState *app, UserOperation uo) {
         break;
     case UO_MOVE_FOCUS_CURRENT_TASK:
         handle_move_focus_current_task(app);
+        break;
+    case UO_CURRENT_TASK_JUMP_DEFINITION:
+        if(handle_move_focus_current_task(app)){
+            handle_jump_keyword_definition(app);
+        }
         break;
     case UO_MARK_NODE:
         handle_mark_node(app, uo);
