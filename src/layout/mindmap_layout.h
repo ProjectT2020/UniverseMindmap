@@ -15,5 +15,5 @@ void mindmap_layout_and_render(UiContext *ctx);
 int mindmap_layout_update(UiContext *ui, TreeOverlay *overlay, Event *e);
 
 // Layout calculation functions
-void mind_node_height(UiContext *ctx, TreeOverlay *ov, TreeNode n, int *out_h);
-void mind_node_layout_origin(UiContext *ctx, TreeOverlay *ov, TreeNode n, int *out_x, int *out_y);
+void mind_node_layout_origin(TreeOverlay *ov, TreeNode n, double *out_x, int *out_y, double (*display_width_func)(TreeNode n),
+    double link_width) ;

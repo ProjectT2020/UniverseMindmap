@@ -59,7 +59,6 @@ typedef struct {
         UO_UNMARK_AS_DEFINITION,     // unmark current node as definition (remove surrounding [])
 
         // folding
-        UO_TOGGLE_FOLD_NODE,
         UO_FOLD_NODE,             // zc: fold current nod3
         UO_UNFOLD_NODE,           // zo: unfold current node
         UO_FOLD_MORE,             // zm: fold more
@@ -86,17 +85,24 @@ typedef struct {
         UO_PASTE_FROM_SYSTEM_CLIPBOARD_AS_SIBLINGS,
         UO_PASTE_FROM_SYSTEM_CLIPBOARD_AS_CHILDREN,
         UO_APPEND_NODE_TEXT,
+        UO_DO_APPEND_NODE_TEXT,
         UO_EDIT_NODE,             // rename node
+        UO_EDIT_NODE_FRONT,
+        UO_EDIT_NODE_END,
+        UO_DO_EDIT_NODE,             // rename node
         UO_VI_EDIT_NODE,         // enter vi-like edit mode for current node
         UO_JOIN_TEXT_WITHOUT_SPACE, // (gJ) join text with next sibling without adding space
 
         // mode switch
         UO_COMMAND_MODE,        // switch to command mode
+        UO_DO_COMMAND,          // execute command
         UO_SHELL_ABOVE,          // connect new controllable shell above
 
         // search
         UO_SEARCH,                // search mode
-        UO_SEARCH_BACKWARD,       // search backward
+        UO_DO_SEARCH,             // perform search after getting search query
+        UO_SEARCH_BACKWARD,       // get search backward string
+        UO_DO_SEARCH_BACKWARD,    // perform search backward
         UO_SEARCH_NEXT,           // next search result
         UO_SEARCH_PREV,           // previous search result
         UO_SEARCH_NEXT_EXACT,     // next exact match for current node text
@@ -118,6 +124,8 @@ typedef struct {
         UO_VIEW_DOWN,             // Ctrl-E 
         UO_NEXT_PAGE,            // Ctrl-F / PgDn
         UO_PREV_PAGE,            // Ctrl-B / PgUp
+        UO_NEXT_HALF_PAGE,       // Ctrl-D
+        UO_PREV_HALF_PAGE,       // Ctrl-U
 
         // jump history
         UO_JUMP_BACK,             // Ctrl+O jump back in history
@@ -139,33 +147,32 @@ typedef struct {
     void *data;
 } UserOperation;    
 
+UserOperation * uo_create(UserOperation uo);
+void uo_destroy(UserOperation *uo);
+
 typedef struct UiContext UiContext;
 
 typedef void (*UiGetNameFn)(UiContext *ctx, char *buffer, size_t buffer_size);
 
+typedef struct AppState AppState;
 typedef struct UiContext {
     uint32_t magic;            // runtime type/lifetime guard
     int width;
     int height;
     int offset_x;
     int offset_y;
-    bool global_enable_hide; // global flag to enable hiding nodes (not show hidden  nodes)
-    TreeNode current_node;         // current focus node
     TreeOverlay *overlay;          // underlying tree overlay (data model)
+    AppState *app;                 // application state
 
     // view
     int view_x;                 // view position x
     int view_y;                 // view position y
-    bool fix_view;              // debug do not adjust view
     bool show_ancestors_in_one_line;
 
     int current_text_x;        // current node text render position X (for cursor positioning during editing)
     int current_text_y;        // current node text render position Y
-    bool show_child_position;
-    bool mark_and_show_visible_nodes;
     int mark; // visible node index
     int mark_page; // mark page
-    uint64_t node_marks[26 * 26]; // mark -> node id
 
     // input
     UserOperation last_input;   // previous user input, used to distinguish whether Tab(Ctrl+I) means “New Node” or “Jump Forward.”
@@ -173,11 +180,6 @@ typedef struct UiContext {
     // callbacks for headless testing
     UiGetNameFn get_name_fn;
 
-    // searching
-    char search_query[256];     // search string
-    int search_exact;           // whether to match exactly (0=contain, 1=exact)
-
-    char info_message[512];    // message to show in status bar 
 } UiContext;
 
 UiContext* ui_context_create(int width, int height);
@@ -187,51 +189,33 @@ void ui_set_overlay(UiContext *ctx, TreeOverlay *overlay);
 
 // input 
 UserOperation ui_poll_user_input(UiContext *ctx) ;
-char* ui_get_name(UiContext *ctx, char *terminated_character);
-const char* ui_get_name_append(UiContext *ctx, const char *old_name, char *terminated_character);
-char* ui_get_command(UiContext *ctx);
-char* ui_get_search_query(UiContext *ctx);
-char *ui_get_search_backward_query(UiContext *ctx);
+char* ui_get_name(void *ui_ctx, char *terminated_character);
+char* ui_get_name_append(void *ui_ctx, const char *old_name, char *terminated_character);
+char* ui_get_command(void *ui_ctx);
+char* ui_get_search_query(void *ui_ctx);
+char *ui_get_search_backward_query(void *ui_ctx);
 void ui_set_get_name_callback(UiContext *ctx, UiGetNameFn fn);
 
 // DFS traversal
 TreeNode ui_dfs_next(TreeOverlay *overlay, TreeNode n);
 TreeNode ui_dfs_prev(TreeOverlay *overlay, TreeNode n);
 
-void ui_render(UiContext *ctx);
+void ui_render(void *ui_ctx);
 
-// visible nodes traversal (skip hidden nodes if global_enable_hide is true)
-TreeNode ui_first_visible_child(UiContext *ui, TreeNode n) ;
-TreeNode ui_next_visible_sibling(UiContext *ui, TreeNode n) ;
-TreeNode ui_previous_visible_sibling(UiContext *ui, TreeNode n) ;
-TreeNode ui_last_visible_child(UiContext *ui, TreeNode parent);
-TreeNode ui_parent_level_next_visible_sibling(UiContext *ui, TreeNode n);
-TreeNode ui_parent_level_prev_visible_sibling(UiContext *ui, TreeNode n);
-
-// layout and selection
-void ui_move_focus_down(UiContext *ui) ;
-void ui_move_focus_up(UiContext *ui) ;
-void ui_move_focus_left(UiContext *ui) ;
-void ui_move_focus_right(UiContext *ui) ;
-void ui_move_focus_child_position(UiContext *ui, int pos);
-void ui_move_focus_top(UiContext *ui);
-void ui_move_focus_bottom(UiContext *ui);
-void ui_move_focus_last_child(UiContext *ui);
 
 // view
-void ui_center_view_on_current(UiContext *ui);
-void ui_place_current_left(UiContext *ui);
-void ui_place_current_right(UiContext *ui);
-void ui_view_move(UiContext *ui, int rows, int cols);
-void ui_view_down(UiContext *ui, int lines);
-void ui_view_up(UiContext *ui, int lines);
-void ui_view_next_page(UiContext *ui);
-void ui_view_prev_page(UiContext *ui);
+void ui_center_view_on_current(void *ui_ctx);
+void ui_place_current_left(void *ui_ctx);
+void ui_place_current_right(void *ui_ctx);
+void ui_view_move(void *ui_ctx, int rows, int cols);
+void ui_view_down(void *ui_ctx, int lines);
+void ui_view_up(void *ui_ctx, int lines);
+void ui_view_next_page(void *ui_ctx);
+void ui_view_prev_page(void *ui_ctx);
 
-void ui_info_set_message(UiContext *ctx, const char *msg, ...);
+void ui_reset_layout(void *ui_ctx);
 
-void ui_reset_layout(UiContext *ui);
 
-void ui_message_fun(void *uc, const char *msg, va_list args);
+int mind_node_height(TreeOverlay *ov, TreeNode n) ;
 
 #endif // UI_H

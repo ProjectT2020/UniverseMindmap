@@ -13,7 +13,6 @@
 #include <time.h>
 
 #include "../wal/wal.h"
-#include "../ui/ui.h"
 #include "../operate/operate.h"
 #include "../utils/logging.h"
 #include "../utils/uri_template.h"
@@ -44,9 +43,24 @@ static const char *CONTEXT_WIKI_TERM = "wiki"; // Parent node with text 'wiki' d
 static const char *CONTEXT_CODE_RESOURCE = "code"; // Parent node with text 'code' denotes its children as source code
 static const char *APP_TASK_STACK_NAME = "[Task Stack]"; // A special node to hold task list
 
+bool dont_adjust_doc_view_by_current;
+
 static TreeNode app_ensure_metadata_node(Operate *operate); ;
-static void update_current_with_history(AppState *app, TreeNode new_position) ;
 static void handle_add_child_to_tail(AppState *app, TreeNode node) ;
+
+
+void app_ui_info_set_message(AppState *app, const char *message, ...) {
+    static char buffer[1024];
+    if(app->info_message){
+        free(app->info_message);
+        app->info_message = NULL;
+    }
+    va_list args;
+    va_start(args, message);
+    vsnprintf(buffer, sizeof(buffer), message, args);
+    app->info_message = strdup(buffer);
+    va_end(args);
+}
 
 TreeNode app_metadata_key_node(Operate *operate, const char *key) {
     TreeOverlay *ov = operate->overlay;
@@ -299,7 +313,7 @@ static int app_load_current(AppState *app) {
         log_warn("Loaded current_node_id %lu not found in tree, defaulting to root", node_id);
         return -1;
     }
-    app->ui->current_node = node;
+    app->current_node = node;
     log_info("Loaded current_node_id: %lu", node_id);
     return 0;
 }
@@ -335,6 +349,9 @@ AppState* app_init(const char *data_file) {
     app->lock_file_path = strdup(lock_file_path);
     app->lock_file_fd = fd;
 
+    // input state
+    app->input_state = input_state_create();
+
     // load or initialize tree storage, view and overlay
     bool file_exists = (access(data_file, F_OK) == 0);
     if(file_exists){
@@ -346,6 +363,7 @@ AppState* app_init(const char *data_file) {
         app->tree_view = NULL;
         app->tree_overlay = tree_overlay_create_empty(data_file);
     }
+    app->current_node = app->tree_overlay->root;
 
 
     // load or initialize WAL
@@ -373,19 +391,8 @@ AppState* app_init(const char *data_file) {
     }
 
     
-    // initialize UI context
-    int width, height;
-    ui_adapter_get_terminal_size(&width, &height);
-    app->ui = ui_context_create(width, height);
-    app->ui->overlay = app->tree_overlay;
-    app->ui->current_node = app->tree_overlay->root;
-    log_register_ui_message_fun(ui_message_fun, app->ui);
-    log_debug("[app_init] Set current_node to root: id=%lu, kind=%d", 
-              tree_node_id(app->ui->current_node), app->ui->current_node.kind);
-    
     // initialize operation management
     app->operate = operate_create(app->wal, app->tree_overlay);
-    app->operate->ui = app->ui;
 
     // app state init
     app->selected_node_id = 0;  // root node
@@ -413,7 +420,6 @@ void app_shutdown(AppState *app) {
     
     // close resources
     if (app->tree_storage) tree_storage_close(app->tree_storage);
-    if (app->ui) ui_context_destroy(app->ui);
     if (app->jump_back_stack) stack_destroy(app->jump_back_stack);
     if (app->jump_forward_stack) stack_destroy(app->jump_forward_stack);
     if (app->edit_buffer) free(app->edit_buffer);
@@ -437,30 +443,6 @@ void app_step(AppState *app, UserOperation uo) {
     app_apply_event(app, uo);
 }
 
-/**
- * main loop
- */
-void app_run_interactive(AppState *app) {
-    ui_adapter_enable_raw_mode();
-    
-    int i = 0;
-    ui_render(app->ui);
-    while (app->running) {
-        log_debug("[app_run_interactive] ------------- New Loop Iteration -----------%d", i++);
-        UserOperation uo = ui_poll_user_input(app->ui);
-        app_apply_event(app, uo);
-        ui_render(app->ui);
-    }
-    
-    ui_adapter_disable_raw_mode();
-}
-
-/**
- * main entry point for interactive mode
- */
-void app_run(AppState *app) {
-    app_run_interactive(app);
-}
 
 bool app_is_current_task(AppState *app, TreeNode node) {
     TreeNode current_task_node = app_metadata_value_node(app, APP_META_CURRENT_TASK);
@@ -472,8 +454,9 @@ bool app_is_current_task(AppState *app, TreeNode node) {
 }
 
 static void handle_add_child_node(AppState *app) {
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    // todo to remove
+    return;
+    TreeNode current = app->current_node;
     log_debug("[handle_add_child] Before add: current_node id=%lu, kind=%d", 
               tree_node_id(current), current.kind);
 
@@ -484,20 +467,20 @@ static void handle_add_child_node(AppState *app) {
         "Unnamed Child"
     );
     operate_commit_event(app->operate, event);
-    ui->current_node = tree_find_by_id(app->tree_overlay, event->new_node_id);
+    app->current_node = tree_find_by_id(app->tree_overlay, event->new_node_id);
     event_destroy(event);
-    ui_render(app->ui);// render to get text position
+    app->ui_render(app->ui_ctx);
     
-    char terminated_character = 0;
-    handle_edit_node(app, ui->current_node, &terminated_character);
-    if(terminated_character == '\t'){
+    // char terminated_character = 0;
+    // handle_edit_node(app, app->current_node, &terminated_character);
+    // if(terminated_character == '\t'){
         // if terminated by tab, immediately add a child node and edit it
-        handle_add_child_to_tail(app, current);
-    }
+        // handle_add_child_to_tail(app, current);
+    // }
     
     if(is_current_task){
         // update current task
-        uint64_t current_task_node_id = tree_node_id(ui->current_node);
+        uint64_t current_task_node_id = tree_node_id(app->current_node);
         TreeNode context_current_task_value = context_metadata_get(app, current, APP_META_CURRENT_TASK);
         static char current_task_id_str[32];
         sprintf(current_task_id_str, "%llu", current_task_node_id);
@@ -529,7 +512,6 @@ static void handle_add_child_node(AppState *app) {
 static void handle_as_current_task(AppState *app, TreeNode node);
 
 void handle_add_child_to_tail(AppState *app, TreeNode node) {
-    UiContext *ui = app->ui;
     TreeNode current = node;
     log_debug("[handle_add_child_to_tail] Before add: current_node id=%lu, kind=%d", 
               tree_node_id(current), current.kind);
@@ -543,23 +525,17 @@ void handle_add_child_to_tail(AppState *app, TreeNode node) {
     int r = operate_commit_event(app->operate, event);
     if(r != 0){
         log_error("handle_add_child_to_tail: Failed to commit add_last_child event");
-        ui_info_set_message(ui, "Failed to add child node");
+        app_ui_info_set_message(app, "Failed to add child node");
         event_destroy(event);
         return;
     }
-    ui->current_node = tree_find_by_id(app->tree_overlay, event->new_node_id);
-    TreeNode child_node = ui->current_node;
+    app->current_node = tree_find_by_id(app->tree_overlay, event->new_node_id);
+    TreeNode child_node = app->current_node;
     
-    ui_render(app->ui);// render to get text position
+    app->ui_render(app->ui_ctx);
 
-    char terminated_character = 0;
-    handle_edit_node(app, child_node, &terminated_character);
-    operate_edit_history_record(app->operate, event);
     event_destroy(event);
-    if(terminated_character == '\t'){
-        // if terminated by tab, immediately add a child node and edit it
-        handle_add_child_to_tail(app, ui->current_node);
-    }
+    handle_edit_node(app);
 
     const char *child_text = tree_node_text(child_node);// must not use ui->current_node here because current node text may be changed by handle_edit_node
     if(is_current_task && child_text != NULL && child_text[0] != '.') {
@@ -569,8 +545,7 @@ void handle_add_child_to_tail(AppState *app, TreeNode node) {
 
 static void handle_add_sibling_above(AppState *app) {
     log_debug("[handle_add_sibling_above] Adding sibling above current node");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
     
     TreeNode parent = tree_node_parent(app->tree_overlay, current);
     TreeNode first_child = tree_node_first_child(app->tree_overlay, parent);
@@ -593,23 +568,17 @@ static void handle_add_sibling_above(AppState *app) {
     }
     int r = operate_commit_event(app->operate, event);
     if(r == 0){// commit success
-        ui->current_node = tree_find_by_id(app->tree_overlay, event->new_node_id);
-        ui_render(app->ui);
+        app->current_node = tree_find_by_id(app->tree_overlay, event->new_node_id);
+        app->ui_render(app->ui_ctx);
 
-        char terminated_character = 0;
-        handle_edit_node(app, ui->current_node, &terminated_character);
-        operate_edit_history_record(app->operate, event);
         event_destroy(event);
-        if(terminated_character == '\t'){
-            handle_add_child_to_tail(app, ui->current_node);
-        }
+        handle_edit_node(app);
     }
 }
 
 static void handle_add_sibling_below(AppState *app) {
     log_debug("[handle_add_sibling_below] Adding sibling below current node");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
     
     Event *event = event_create_add_sibling(
         tree_node_id(current),
@@ -617,55 +586,62 @@ static void handle_add_sibling_below(AppState *app) {
     );
     int r = operate_commit_event(app->operate, event);
     if(r == 0){// commit success
-        ui->current_node = tree_find_by_id(app->tree_overlay, event->new_node_id);
-        ui_render(app->ui);
-
-        char terminated_character = 0;
-        handle_edit_node(app, ui->current_node, &terminated_character);
-        operate_edit_history_record(app->operate, event);
+        app->current_node = tree_find_by_id(app->tree_overlay, event->new_node_id);
+        app->ui_render(app->ui_ctx);
         event_destroy(event);
-        if(terminated_character == '\t'){
-            handle_add_child_to_tail(app, ui->current_node);
-        }
+        handle_edit_node(app);
     }
-
 }
 
-void handle_edit_node(AppState *app, TreeNode node, char *terminated_character){
-    UiContext *ui = app->ui;
+void handle_edit_node(AppState *app){
+    app->input_state->type = INPUT_STATE_TYPE_GET_NAME;
+    app->node_text = "";
+}
+void handle_edit_node_front(AppState *app){
+    app->input_state->type = INPUT_STATE_TYPE_GET_NAME_INSERT_FRONT;
+    const char *current_text = tree_node_text(app->current_node);
+    size_t current_text_len = strlen(current_text);
+    app->node_text = (char*)calloc(current_text_len + 1, sizeof(char));
+    strcpy(app->node_text, current_text);
+}
+void handle_edit_node_end(AppState *app){
+    app->input_state->type = INPUT_STATE_TYPE_GET_NAME_INSERT_END;
+    const char *current_text = tree_node_text(app->current_node);
+    size_t current_text_len = strlen(current_text);
+    app->node_text = (char*)calloc(current_text_len + 1, sizeof(char));
+    strcpy(app->node_text, current_text);
+}
+void handle_do_edit_node(AppState *app, TreeNode node){
     TreeNode current = node;
-    char *name = ui_get_name(ui, terminated_character);
-    if(*terminated_character == '\e'){
-        // cancelled
-        free(name);
+    if(app->node_text == NULL){
+        log_warn("handle_do_edit_node: name is NULL");
         return;
     }
     Event *event = event_create_update_text(
         tree_node_id(current),
-        name
+        app->node_text
     );
     int r = operate_commit_event(app->operate, event);
     // update current to reflect underlying node change
     // kind may changed to TREE_NODE_MUTABLE
-    ui->current_node = tree_find_by_id(app->tree_overlay, event->node_id);
+    app->current_node = tree_find_by_id(app->tree_overlay, event->node_id);
     if(r != 0){
-        log_warn("handle_edit_node: Failed to commit update text event");
+        log_warn("handle_do_edit_node: Failed to commit update text event");
     }
-    free(name);
 
+    operate_edit_history_record(app->operate, &(Event){.type = EVENT_UPDATE_TEXT, .node_id = tree_node_id(current)});
 }
 
 void handle_vi_edit_node(AppState *app) {
     log_debug("[handle_vi_edit_node] Entering vi-like edit mode for current node");
-    operate_edit_node(app->operate, app->ui->current_node);
-    app->ui->current_node = tree_find_by_id(app->tree_overlay, tree_node_id(app->ui->current_node));
+    operate_edit_node(app->operate, app->current_node);
+    app->current_node = tree_find_by_id(app->tree_overlay, tree_node_id(app->current_node));
     log_debug("[handle_vi_edit_node] After edit: current_node id=%lu, kind=%d", 
-              tree_node_id(app->ui->current_node), app->ui->current_node.kind);
+              tree_node_id(app->current_node), app->current_node.kind);
 }
 
 void handle_mark_as_definition(AppState *app) {
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
     const char *old_name = tree_node_text(current);
 
     char *new_name = calloc(strlen(old_name) + 2 + 1, sizeof(char)); // +1 NULL terminated
@@ -679,13 +655,12 @@ void handle_mark_as_definition(AppState *app) {
     if(r != 0){
         log_warn("handle_mark_as_definition: Failed to commit update text event");
     } 
-    ui->current_node = tree_find_by_id(app->tree_overlay, event->node_id);
+    app->current_node = tree_find_by_id(app->tree_overlay, event->node_id);
     free(new_name);
 }
 
 void handle_unmark_as_definition(AppState *app) {
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
     const char *old_name = tree_node_text(current);
 
     int old_name_len = strlen(old_name);
@@ -705,21 +680,22 @@ void handle_unmark_as_definition(AppState *app) {
     if(r != 0){
         log_warn("handle_unmark_as_definition: Failed to commit update text event");
     } 
-    ui->current_node = tree_find_by_id(app->tree_overlay, event->node_id);
+    app->current_node = tree_find_by_id(app->tree_overlay, event->node_id);
     free(new_name);
 }
 
 
 static void handle_append_node_text(AppState *app) {
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
-    const char *old_name = tree_node_text(current);
-    char terminated_character = 0;
-    const char *new_name = ui_get_name_append(ui, old_name, &terminated_character);
-    if(terminated_character == '\e'){
-        // cancelled
+    app->input_state->type = INPUT_STATE_TYPE_GET_APPEND_TEXT;
+}
+static void handle_do_append_node_text(AppState *app) {
+    char *new_name = app->node_text;
+    if(new_name == NULL){
+        log_warn("handle_do_append_node_text: new_name is NULL");
         return;
     }
+    TreeNode current = app->current_node;
+
     Event *event = event_create_update_text(
         tree_node_id(current),
         new_name
@@ -727,7 +703,7 @@ static void handle_append_node_text(AppState *app) {
     int r = operate_commit_event(app->operate, event);
     // update current to reflect underlying node change
     // kind may changed to TREE_NODE_MUTABLE
-    ui->current_node = tree_find_by_id(app->tree_overlay, event->node_id);
+    app->current_node = tree_find_by_id(app->tree_overlay, event->node_id);
     if(r != 0){
         log_warn("handle_append_node_text: Failed to commit update text event");
     } 
@@ -735,8 +711,7 @@ static void handle_append_node_text(AppState *app) {
 
 void handle_join_sibling_as_child(AppState *app) {
     log_debug("[handle_join_sibling_as_child] Joining sibling as child");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
     TreeNode parent = tree_node_parent(app->tree_overlay, current);
     TreeNode next_sibling = tree_node_next_sibling(app->tree_overlay, current);
     if(!tree_node_is_null(next_sibling)){
@@ -757,10 +732,7 @@ void handle_join_sibling_as_child(AppState *app) {
 
 void handle_fold_node(AppState *app) {
     log_debug("[handle_fold_node] Toggling fold state of current node");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
-
-    int r = operate_fold_node(app->operate, current);
+    int r = operate_fold_node(app->operate, &app->current_node);
     if (r != 0) {
         log_warn("Fold/unfold operation failed");
     }
@@ -768,8 +740,7 @@ void handle_fold_node(AppState *app) {
 
 void handle_unfold_node(AppState *app) {
     log_debug("[handle_unfold_node] Toggling unfold state of current node");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
 
     if(!tree_node_collapsed(current)){
         log_debug("Current node is not collapsed, no need to unfold");
@@ -787,8 +758,7 @@ void handle_unfold_node(AppState *app) {
 
 void handle_fold_children(AppState *app) {
     log_debug("[handle_fold_children] Folding all children of current node");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
 
     TreeNode child = tree_node_first_child(app->tree_overlay, current);
     while(!tree_node_is_null(child)){
@@ -814,13 +784,12 @@ void handle_fold_children(AppState *app) {
     if (r0 != 0) {
         log_warn("Unfold parent operation failed for node id=%lu", tree_node_id(current));
     }
-    ui_center_view_on_current(app->ui);
+    app->ui_center_view_on_current(app->ui_ctx);
 }
 
 void handle_reduce_folding(AppState *app) {
     log_debug("[handle_reduce_folding] Reducing folding (expanding one more level) of current node");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
     // get current foldlevel
     TreeNode fold_level_node = node_metadata_get(app, current, "fold_level");
     int fold_level = 0;
@@ -836,13 +805,12 @@ void handle_reduce_folding(AppState *app) {
     node_metadata_set(app, current, "fold_level", fold_level_str);
     free(fold_level_str);
 
-    ui_center_view_on_current(app->ui);
+    app->ui_center_view_on_current(app->ui_ctx);
 }
 
 void handle_expand_all_descendants(AppState *app) {
     log_debug("[handle_expand_all_descendants] Expanding all descendants (except .meta) of current node");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
 
     handle_unfold_node(app);
 
@@ -851,35 +819,36 @@ void handle_expand_all_descendants(AppState *app) {
         log_warn("handle_expand_all_descendants: Failed to expand all descendants");
     }
 
-    ui_center_view_on_current(app->ui);
+    app->ui_center_view_on_current(app->ui_ctx);
 }
 
 void handle_fold_level1(AppState *app){
     log_debug("[handle_fold_level1] Setting fold level 1 of current node");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
     
     handle_unfold_node(app);
     TreeNode child = tree_node_first_child(app->tree_overlay, current);
     while(!tree_node_is_null(child)){
-        operate_fold_node(app->operate, child);
+        operate_fold_node(app->operate, &child);
         child = tree_node_next_sibling(app->tree_overlay, child);
     }
 
     // node_metadata_set(app, current, "fold_level", "1");
-    ui_center_view_on_current(app->ui);
+    app->ui_center_view_on_current(app->ui_ctx);
 }
 
 void handle_fold_and_move_to_child(AppState *app) {
+    log_error("[handle_fold_and_move_to_child] to be implemented");
+    return;
     while(true){
-        TreeNode current = app->ui->current_node;
+        TreeNode current = app->current_node;
         TreeNode child = tree_node_first_child(app->tree_overlay, current);
         if(tree_node_is_null(child)){
             goto end;
         }
         handle_fold_level1(app);
-        app->ui->show_child_position = true;
-        ui_render(app->ui);
+        app->show_child_position = true;
+        app->ui_render(app->ui_ctx);
         char next = getchar();
         int pos = 0;
         if('0' <= next && next <= '9'){
@@ -893,17 +862,16 @@ void handle_fold_and_move_to_child(AppState *app) {
         } else {
             goto end;
         }
-        ui_move_focus_child_position(app->ui, pos);
+        // ui_move_focus_child_position(app->ui, pos);
     };
 end:
-    app->ui->show_child_position = false;
+    app->show_child_position = false;
     return;
 }
 
 void handle_fold_more(AppState *app) {
     log_debug("[handle_fold_more] Folding more (increasing fold level) of current node");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
     handle_unfold_node(app);// ensure current node is unfolded before folding more
     // get current foldlevel
     TreeNode fold_level_node = node_metadata_get(app, current, "fold_level");
@@ -926,7 +894,7 @@ void handle_fold_more(AppState *app) {
     node_metadata_set(app, current, "fold_level", fold_level_str);
     free(fold_level_str);
 
-    ui_center_view_on_current(app->ui);
+    app->ui_center_view_on_current(app->ui_ctx);
 }
 
 void handle_undo(AppState *app) {
@@ -949,7 +917,7 @@ void handle_undo(AppState *app) {
         if(event_node_id != 0){
             TreeNode node = tree_find_by_id(app->tree_overlay, event_node_id);
             if(!tree_node_is_null(node)){
-                app->ui->current_node = node;
+                app->current_node = node;
             }
         }
         event_destroy(last_event);
@@ -966,8 +934,7 @@ void handle_redo(AppState *app) {
 
 void handle_copy_subtree(AppState *app) {
     log_debug("[handle_copy_subtree] Copying current subtree to clipboard");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
     int r = operate_copy_subtree(app->operate, current);
     if (r != 0) {
         log_warn("Copy subtree operation failed");
@@ -979,8 +946,7 @@ void handle_copy_subtree(AppState *app) {
 
 void handle_paste_as_child(AppState *app) {
     log_debug("[handle_paste_as_child] Pasting clipboard content as child");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
 
     switch(app->operate->clipboard_mode ){
         case CLIPBOARD_EMPTY:{
@@ -1037,8 +1003,7 @@ void handle_paste_as_child(AppState *app) {
 
 void handle_paste_as_sibling_below(AppState *app) {
     log_debug("[handle_paste_as_sibling_below] Pasting clipboard content as sibling below");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
 
     switch(app->operate->clipboard_mode ){
         case CLIPBOARD_EMPTY:{
@@ -1101,8 +1066,7 @@ void handle_paste_as_sibling_below(AppState *app) {
 
 void handle_paste_as_sibling_above(AppState *app) {
     log_debug("[handle_paste_as_sibling_above] Pasting clipboard content as sibling above");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
 
     switch(app->operate->clipboard_mode ){
         case CLIPBOARD_EMPTY:{
@@ -1163,22 +1127,21 @@ void handle_paste_as_sibling_above(AppState *app) {
 }
 
 static void update_current_before_delete(AppState *app, TreeNode deleted_node) {
-    UiContext *ui = app->ui;
     TreeNode old_prev_sibling = tree_node_prev_sibling(app->tree_overlay, deleted_node);
     TreeNode old_parent = tree_node_parent(app->tree_overlay, deleted_node);
     TreeNode old_next_sibling = tree_node_next_sibling(app->tree_overlay, deleted_node);
     if(!tree_node_is_null(old_next_sibling)){
-        ui->current_node = old_next_sibling;
+        app->current_node = old_next_sibling;
     } else if(!tree_node_is_null(old_prev_sibling)){
-        ui->current_node = old_prev_sibling;
+        app->current_node = old_prev_sibling;
     }else{
-        ui->current_node = old_parent;
+        app->current_node = old_parent;
     }
 }
 
 void handle_delete_subtree(AppState *app) {
     log_warn("[handle_delete_subtree] Deleting current subtree");
-    TreeNode old_current = app->ui->current_node;
+    TreeNode old_current = app->current_node;
     TreeNode parent = tree_node_parent(app->tree_overlay, old_current);
     if(tree_node_is_null(parent)){
         log_warn("Cannot delete root node");
@@ -1186,7 +1149,7 @@ void handle_delete_subtree(AppState *app) {
     }
     if(strcmp(tree_node_text(parent), RECYCLE_BIN_NAME) != 0){
         log_debug("can't delete directly, move to recycle bin first");
-        ui_info_set_message(app->ui, "Can't delete directly, move to recycle bin first.");
+        app_ui_info_set_message(app, "Can't delete directly, move to recycle bin first.");
         return;
     }
 
@@ -1201,8 +1164,7 @@ void handle_delete_subtree(AppState *app) {
 
 void handle_cut_subtree(AppState *app) {
     log_debug("[handle_cut_subtree] Deleting current subtree");
-    UiContext *ui = app->ui;
-    TreeNode current = ui->current_node;
+    TreeNode current = app->current_node;
     TreeNode old_prev_sibling = tree_node_prev_sibling(app->tree_overlay, current);
 
     TreeNode old_parent = tree_node_parent(app->tree_overlay, current);
@@ -1226,16 +1188,16 @@ void handle_cut_subtree(AppState *app) {
 
     // Move focus to sibling or parent
     if (!tree_node_is_null(old_next_sibling)) {
-        ui->current_node = old_next_sibling;
+        app->current_node = old_next_sibling;
     } else if(!tree_node_is_null(old_prev_sibling)){
-        ui->current_node = old_prev_sibling;
+        app->current_node = old_prev_sibling;
     }else{
-        ui->current_node = old_parent;
+        app->current_node = old_parent;
     }
 }
 
 void handle_cut_node(AppState *app){
-    TreeNode curr = app->ui->current_node;
+    TreeNode curr = app->current_node;
     TreeNode child = tree_node_first_child(app->tree_overlay, curr);
     if(strcmp(tree_node_text(child), ".meta") == 0){
         child = tree_node_next_sibling(app->tree_overlay, child);
@@ -1266,7 +1228,7 @@ void handle_cut_node(AppState *app){
 }
 
 static void handle_copy_text_to_system_clipboard(AppState *app) {
-    const char *text = tree_node_text(app->ui->current_node);
+    const char *text = tree_node_text(app->current_node);
     log_debug("[handle_copy_text_to_system_clipboard] Copying text to system clipboard: %s", text);
     #if defined(__APPLE__)
     // if macOS, use pbcopy
@@ -1277,7 +1239,7 @@ static void handle_copy_text_to_system_clipboard(AppState *app) {
     }
     fwrite(text, sizeof(char), strlen(text), pbcopy);
     pclose(pbcopy);
-    ui_info_set_message(app->ui, "Copied to system clipboard");
+    app_ui_info_set_message(app, "Copied to system clipboard");
     #elif defined(__linux__)
     log_debug("handle_copy_text_to_system_clipboard: Linux clipboard copy not implemented yet");
     #else
@@ -1288,13 +1250,13 @@ static void handle_copy_text_to_system_clipboard(AppState *app) {
 
 static void handle_copy_subtree_to_system_clipboard(AppState *app) {
     log_debug("[handle_copy_subtree_to_system_clipboard] Copying subtree to system clipboard");
-    operate_export_mindmap_to_clipboard_txt(app->operate, app->ui->current_node);
-    ui_info_set_message(app->ui, "Subtree copied to system clipboard");
+    operate_export_mindmap_to_clipboard_txt(app->operate, app->current_node);
+    app_ui_info_set_message(app, "Subtree copied to system clipboard");
 }
 
 static void handle_join_text_without_space(AppState *app) {
     log_debug("[handle_join_text_without_space] Joining text with next sibling without space"); 
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     TreeNode next_sibling = tree_node_next_sibling(app->tree_overlay, current);
     if(tree_node_is_null(next_sibling)){
         log_warn("No next sibling to join with");
@@ -1302,7 +1264,7 @@ static void handle_join_text_without_space(AppState *app) {
     }
     if(!tree_node_is_null(tree_node_first_child(app->tree_overlay, next_sibling))){
         log_info("Next sibling has children, cannot join text without space");
-        ui_info_set_message(app->ui, "Next sibling has children, cannot join text without space");
+        app_ui_info_set_message(app, "Next sibling has children, cannot join text without space");
         return;
     }
     // update text of current node
@@ -1321,7 +1283,7 @@ static void handle_join_text_without_space(AppState *app) {
         log_warn("Failed to update text for join text without space");
         return;
     }
-    app->ui->current_node = 
+    app->current_node = 
         tree_find_by_id(app->tree_overlay, edit_event->node_id);
 
     // delete next sibling (move to recycle bin)
@@ -1346,82 +1308,107 @@ static void handle_join_text_without_space(AppState *app) {
 
 static void handle_move_focus_prev_sibling(AppState *app) {
     log_debug("[handle_move_focus_prev_sibling] Moving focus to previous visible sibling");
-    TreeNode prev = ui_previous_visible_sibling(app->ui, app->ui->current_node);
+    TreeNode prev = ui_previous_visible_sibling(app, app->current_node);
     if(!tree_node_is_null(prev)){
         update_current_with_history(app, prev);
     }
-    log_debug("[handle_move_focus_prev_sibling] After: current_node id=%lu", tree_node_id(app->ui->current_node));
+    log_debug("[handle_move_focus_prev_sibling] After: current_node id=%lu", tree_node_id(app->current_node));
 }
 
 static void handle_move_focus_next_sibling(AppState *app) {
     log_debug("[handle_move_focus_next_sibling] Moving focus to next visible sibling");
-    TreeNode next = ui_next_visible_sibling(app->ui, app->ui->current_node);
+    TreeNode next = ui_next_visible_sibling(app, app->current_node);
     if(!tree_node_is_null(next)){
         update_current_with_history(app, next);
-        log_debug("[handle_move_focus_next_sibling] After: current_node id=%lu", tree_node_id(app->ui->current_node));
+        log_debug("[handle_move_focus_next_sibling] After: current_node id=%lu", tree_node_id(app->current_node));
     }
 }
 
 static void handle_move_focus_up(AppState *app) {
-    TreeNode node = app->ui->current_node;
+    TreeNode node = app->current_node;
     while(!tree_node_is_null(node) && 
-        tree_node_is_null(ui_previous_visible_sibling(app->ui, node)) ){
+        tree_node_is_null(ui_previous_visible_sibling(app, node)) ){
         node = tree_node_parent(app->tree_overlay, node);
     }
     if(tree_node_is_null(node)){
         log_info("No previous visible sibling found, staying at current node");
-        ui_info_set_message(app->ui, "No previous visible sibling found");
+        app_ui_info_set_message(app, "No previous visible sibling found");
         return;
     }else{
-        if(tree_node_id(node) == tree_node_id(app->ui->current_node)){
-            app->ui->current_node = ui_previous_visible_sibling(app->ui, node);
+        if(tree_node_id(node) == tree_node_id(app->current_node)){
+            app->current_node = ui_previous_visible_sibling(app, node);
         }else{
-            TreeNode prev = ui_previous_visible_sibling(app->ui, node);
+            TreeNode prev = ui_previous_visible_sibling(app, node);
             assert(!tree_node_is_null(prev));
             update_current_with_history(app, prev);
         }
-        log_debug("[handle_move_focus_up] After: current_node id=%lu", tree_node_id(app->ui->current_node));
+        log_debug("[handle_move_focus_up] After: current_node id=%lu", tree_node_id(app->current_node));
     }
 }
 
 
 static void handle_move_focus_down(AppState *app) {
     // todo: record in jump history
-    log_debug("[handle_move_focus_down] Before: current_node id=%lu", tree_node_id(app->ui->current_node));
-    TreeNode node = app->ui->current_node;
+    log_debug("[handle_move_focus_down] Before: current_node id=%lu", tree_node_id(app->current_node));
+    TreeNode node = app->current_node;
     while(!tree_node_is_null(node) && 
-        tree_node_is_null(ui_next_visible_sibling(app->ui, node)) ){
+        tree_node_is_null(ui_next_visible_sibling(app, node)) ){
         node = tree_node_parent(app->tree_overlay, node);
     }
     if(tree_node_is_null(node)){
         log_info("No next visible sibling found, staying at current node");
-        ui_info_set_message(app->ui, "No next visible sibling found");
+        app_ui_info_set_message(app, "No next visible sibling found");
         return;
     }else{
-        if(tree_node_id(node) == tree_node_id(app->ui->current_node)){
-            app->ui->current_node = ui_next_visible_sibling(app->ui, node);
+        if(tree_node_id(node) == tree_node_id(app->current_node)){
+            app->current_node = ui_next_visible_sibling(app, node);
         }else{
-            TreeNode next = ui_next_visible_sibling(app->ui, node);
+            TreeNode next = ui_next_visible_sibling(app, node);
             assert(!tree_node_is_null(next));
             update_current_with_history(app, next);
         }
-        log_debug("[handle_move_focus_down] After: current_node id=%lu", tree_node_id(app->ui->current_node));
+        log_debug("[handle_move_focus_down] After: current_node id=%lu", tree_node_id(app->current_node));
     }
 }
 
 static void handle_move_focus_left(AppState *app) {
-    log_debug("[handle_move_focus_left] Before: current_node id=%lu", tree_node_id(app->ui->current_node));
-    TreeNode parent = tree_node_parent(app->tree_overlay, app->ui->current_node);
+    log_debug("[handle_move_focus_left] Before: current_node id=%lu", tree_node_id(app->current_node));
+    TreeNode parent = tree_node_parent(app->tree_overlay, app->current_node);
     log_debug("[ui_move_focus_left] parent id=%lu, kind=%d", tree_node_id(parent), parent.kind);
     if (!tree_node_is_null(parent)) {
         update_current_with_history(app, parent);
     } 
-    log_debug("[handle_move_focus_left] After: current_node id=%lu", tree_node_id(app->ui->current_node));
+    log_debug("[handle_move_focus_left] After: current_node id=%lu", tree_node_id(app->current_node));
+}
+
+TreeNode ui_first_visible_child(AppState *app, TreeNode n) {
+    if (tree_node_is_null(n)) return n;
+    TreeOverlay *ov = app->tree_overlay;
+    TreeNode child = tree_node_first_child(ov, n);
+    if(tree_node_show_hidden_children(n)){
+        return child;
+    }
+    while (!tree_node_is_null(child)) {
+        if (!tree_node_hidden(child)) {
+            return child;
+        }
+        child = tree_node_next_sibling(ov, child);
+    }
+    return (TreeNode){ .kind = TREE_NODE_NULL };
+}
+void ui_move_focus_right(AppState *app) {
+    TreeNode current = app->current_node;
+    log_debug("[ui_move_focus_right] current id=%lu, kind=%d", tree_node_id(current), current.kind);
+    TreeNode child = ui_first_visible_child(app, current);
+    log_debug("[ui_move_focus_right] child id=%lu, kind=%d", tree_node_id(child), child.kind);
+    if (!tree_node_is_null(child)) {
+        app->current_node = child;
+    } 
 }
 
 static void handle_move_focus_right(AppState *app) {
-    log_debug("[handle_move_focus_right] Before: current_node id=%lu", tree_node_id(app->ui->current_node));
-    TreeNode current = app->ui->current_node;
+    log_debug("[handle_move_focus_right] Before: current_node id=%lu", tree_node_id(app->current_node));
+    TreeNode current = app->current_node;
     if(tree_node_collapsed(current)){
         Event *event = event_create_expand_node(
             tree_node_id(current)
@@ -1431,37 +1418,95 @@ static void handle_move_focus_right(AppState *app) {
             log_warn("Auto-unfold before move right failed");
         }
     }
-    ui_move_focus_right(app->ui);
-    log_debug("[handle_move_focus_right] After: current_node id=%lu", tree_node_id(app->ui->current_node));
+    ui_move_focus_right(app);
+    log_debug("[handle_move_focus_right] After: current_node id=%lu", tree_node_id(app->current_node));
+}
+
+TreeNode ui_next_visible_sibling(AppState *app, TreeNode n) {
+    if (tree_node_is_null(n)) return n;
+    TreeOverlay *ov = app->tree_overlay;
+    TreeNode parent = tree_node_parent(ov, n);
+    TreeNode next = tree_node_next_sibling(ov, n);
+    if(tree_node_show_hidden_children(parent)){
+        return next;
+    }
+    while (!tree_node_is_null(next)) {
+        if (!tree_node_hidden(next)) {
+            return next;
+        }
+        next = tree_node_next_sibling(ov, next);
+    }
+    return (TreeNode){ .kind = TREE_NODE_NULL };
+}
+
+void ui_move_focus_child_position(AppState *app, int pos){
+    TreeNode current = app->current_node;
+    TreeOverlay *ov = app->tree_overlay;
+    TreeNode child = tree_node_first_child(ov, current);
+    int index = 0;
+    while(!tree_node_is_null(child)){
+        if(index == pos){
+            break;
+        }
+        child = ui_next_visible_sibling(app, child);
+        index++;
+    }
+    if(!tree_node_is_null(child)){
+        app->current_node = child;
+    }
 }
 
 static void handle_move_to_child_position(AppState *app, int position) {
-    log_debug("[handle_move_to_child_position] Before: current_node id=%lu", tree_node_id(app->ui->current_node));
-    if(tree_node_collapsed(app->ui->current_node)){
+    log_debug("[handle_move_to_child_position] Before: current_node id=%lu", tree_node_id(app->current_node));
+    if(tree_node_collapsed(app->current_node)){
         Event *event = event_create_expand_node(
-            tree_node_id(app->ui->current_node)
+            tree_node_id(app->current_node)
         );
         int r = operate_commit_event(app->operate, event);
         if (r != 0) {
             log_warn("Auto-unfold before move to child position failed");
         }
     }
-    ui_move_focus_child_position(app->ui, position);
-    app->ui->show_child_position = false;
-    log_debug("[handle_move_to_child_position] After: current_node id=%lu", tree_node_id(app->ui->current_node));
+    ui_move_focus_child_position(app, position);
+    app->show_child_position = false;
+    log_debug("[handle_move_to_child_position] After: current_node id=%lu", tree_node_id(app->current_node));
+}
+
+void ui_move_focus_top(AppState *app) {
+    TreeOverlay *ov = app->tree_overlay;
+    TreeNode current = app->current_node;
+    TreeNode parent = tree_node_parent(ov, current);
+    if(!tree_node_is_null(parent)){
+        TreeNode first = ui_first_visible_child(app, parent);
+        if(!tree_node_is_null(first)){
+            app->current_node = first;
+        }
+    }
 }
 
 static void handle_move_focus_top(AppState *app) {
     log_debug("[handle_move_focus_top] Moving focus to top (root) node");
-    ui_move_focus_top(app->ui);
-    log_debug("[handle_move_focus_top] After: current_node id=%lu", tree_node_id(app->ui->current_node));
+    ui_move_focus_top(app);
+    log_debug("[handle_move_focus_top] After: current_node id=%lu", tree_node_id(app->current_node));
 }
 
+void ui_move_focus_bottom(AppState *app) {
+    TreeNode current = app->current_node;
+    TreeNode next = ui_next_visible_sibling(app, current);
+    TreeNode last = current;
+    while(!tree_node_is_null(next)){
+        last = next;
+        next = ui_next_visible_sibling(app, next);
+    }
+    if(!tree_node_is_null(last)){
+        app->current_node = last;
+    }
+}
 
 static void handle_move_focus_bottom(AppState *app) {
     log_debug("[handle_move_focus_bottom] Moving focus to bottom (deepest) node");
-    ui_move_focus_bottom(app->ui);
-    log_debug("[handle_move_focus_bottom] After: current_node id=%lu", tree_node_id(app->ui->current_node));
+    ui_move_focus_bottom(app);
+    log_debug("[handle_move_focus_bottom] After: current_node id=%lu", tree_node_id(app->current_node));
 }
 
 static void do_move_fold_begin(AppState *app, TreeNode node) {
@@ -1484,8 +1529,8 @@ static void do_move_fold_begin(AppState *app, TreeNode node) {
 
 static void handle_move_fold_begin(AppState *app) {
     log_debug("[handle_move_fold_begin] Moving focus to first visible child of current node");
-    do_move_fold_begin(app, app->ui->current_node);
-    log_debug("[handle_move_fold_begin] After: current_node id=%lu", tree_node_id(app->ui->current_node));
+    do_move_fold_begin(app, app->current_node);
+    log_debug("[handle_move_fold_begin] After: current_node id=%lu", tree_node_id(app->current_node));
 }
 
 static void do_move_fold_end(AppState *app, TreeNode node) {
@@ -1508,20 +1553,104 @@ static void do_move_fold_end(AppState *app, TreeNode node) {
 
 static void handle_move_fold_end(AppState *app) {
     log_debug("[handle_move_fold_end] Moving focus to last visible child of current node");
-    do_move_fold_end(app, app->ui->current_node);
-    log_debug("[handle_move_fold_end] After: current_node id=%lu", tree_node_id(app->ui->current_node));
+    do_move_fold_end(app, app->current_node);
+    log_debug("[handle_move_fold_end] After: current_node id=%lu", tree_node_id(app->current_node));
 }
 
+TreeNode ui_parent_level_prev_visible_sibling(AppState *app, TreeNode parent){
+    int depth = 0;
+    bool from_child = false;
+    TreeNode prev_sibling = ui_previous_visible_sibling(app, parent);
+    TreeNode child = ui_first_visible_child(app, prev_sibling);
+    if(!tree_node_is_null(prev_sibling) && !tree_node_is_null(child)){
+        goto found;
+    }else{
+        TreeNode sibling = ui_previous_visible_sibling(app, parent);
+        if(tree_node_is_null(sibling)){
+            parent = tree_node_parent(app->tree_overlay, parent);
+            depth--;
+            from_child = true;
+        }else{
+            parent = sibling;
+            from_child = false;
+        }
+    }
+    while(!tree_node_is_null(parent)){
+        if(depth == 0){
+            TreeNode child = ui_last_visible_child(app, parent);
+            if(tree_node_is_null(child)){
+                TreeNode sibling = ui_previous_visible_sibling(app, parent);
+                if(tree_node_is_null(sibling)){
+                    parent = tree_node_parent(app->tree_overlay, parent);
+                    depth--;
+                    from_child = true;
+                    continue;
+                }else{
+                    parent = sibling;
+                    from_child = false;
+                    continue;
+                }
+            }else{
+                prev_sibling = parent;
+                goto found;
+            }
+        }else {
+            assert(depth < 0);
+            if(from_child){
+                // if coming from child, try previous sibling
+                TreeNode sibling = ui_previous_visible_sibling(app, parent);
+                if(tree_node_is_null(sibling)){
+                    // no previous sibling, go to parent
+                    parent = tree_node_parent(app->tree_overlay, parent);
+                    depth--;
+                    from_child = true;
+                    continue;
+                }else{
+                    // found previous sibling, go to it
+                    parent = sibling;
+                    from_child = false;
+                    continue;
+                }
+            }else{
+                // explore child first
+                TreeNode child = ui_last_visible_child(app, parent);
+                if(tree_node_is_null(child)){
+                    TreeNode sibling = ui_previous_visible_sibling(app, parent);
+                    if(tree_node_is_null(sibling)){
+                        // no previous sibling, go to parent
+                        parent = tree_node_parent(app->tree_overlay, parent);
+                        depth--;
+                        from_child = true;
+                        continue;
+                    }else{
+                        // found previous sibling, go to it
+                        parent = sibling;
+                        from_child = false;
+                        continue;
+                    }
+                }else{
+                    // if has child, go to child first
+                    parent = child;
+                    depth++;
+                    from_child = false;
+                    continue;
+                }
+            }
+        }
+    }
+found:
+    return prev_sibling;
+}
 static void handle_move_parent_prev_sibling_begin(AppState *app) {
     log_debug("[handle_move_parent_prev_sibling_begin] Moving focus to first visible child of parent previous sibling");
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     TreeNode parent = tree_node_parent(app->tree_overlay, current);
-    TreeNode prev_sibling = ui_parent_level_prev_visible_sibling(app->ui, parent);
+    TreeNode prev_sibling = ui_parent_level_prev_visible_sibling(app, parent);
     if(tree_node_is_null(prev_sibling)){
         log_info("Parent node has no previous visible sibling, cannot move to parent previous sibling");
         return;
     }else{
-        TreeNode sibling_begin = ui_first_visible_child(app->ui, prev_sibling);
+        TreeNode sibling_begin = ui_first_visible_child(app, prev_sibling);
         update_current_with_history(app, sibling_begin);
         log_info("Moved focus to first visible child of parent previous sibling");
     }
@@ -1529,15 +1658,15 @@ static void handle_move_parent_prev_sibling_begin(AppState *app) {
 
 static void handle_move_parent_next_sibling_end(AppState *app) {
     log_debug("[handle_move_parent_next_sibling_end] Moving focus to last visible child of parent next sibling");
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
 
     TreeNode parent = tree_node_parent(app->tree_overlay, current);
-    TreeNode next_sibling = ui_parent_level_next_visible_sibling(app->ui, parent);
+    TreeNode next_sibling = ui_parent_level_next_visible_sibling(app, parent);
     if(tree_node_is_null(next_sibling)){
         log_info("Parent node has no next visible sibling, cannot move to parent next sibling");
         return;
     }else{
-        TreeNode sibling_end = ui_last_visible_child(app->ui, next_sibling);
+        TreeNode sibling_end = ui_last_visible_child(app, next_sibling);
         update_current_with_history(app, sibling_end);
         log_info("Moved focus to last visible child of parent next sibling");
     }
@@ -1545,14 +1674,14 @@ static void handle_move_parent_next_sibling_end(AppState *app) {
 
 static void handle_move_parent_prev_sibling_end(AppState *app) {
     log_debug("[handle_move_parent_prev_sibling_end] Moving focus to last visible child of parent previous sibling");
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     TreeNode parent = tree_node_parent(app->tree_overlay, current);
-    TreeNode prev_sibling = ui_parent_level_prev_visible_sibling(app->ui, parent);
+    TreeNode prev_sibling = ui_parent_level_prev_visible_sibling(app, parent);
     if(tree_node_is_null(prev_sibling)){
         log_info("Parent node has no previous visible sibling, cannot move to parent previous sibling");
         return;
     }else{
-        TreeNode sibling_end = ui_last_visible_child(app->ui, prev_sibling);
+        TreeNode sibling_end = ui_last_visible_child(app, prev_sibling);
         update_current_with_history(app, sibling_end);
         log_info("Moved focus to last visible child of parent previous sibling");
     }
@@ -1560,14 +1689,14 @@ static void handle_move_parent_prev_sibling_end(AppState *app) {
 
 static void handle_move_parent_next_sibling_begin(AppState *app) {
     log_debug("[handle_move_parent_next_sibling_begin] Moving focus to first visible child of parent next sibling");
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     TreeNode parent = tree_node_parent(app->tree_overlay, current);
-    TreeNode next_sibling = ui_parent_level_next_visible_sibling(app->ui, parent);
+    TreeNode next_sibling = ui_parent_level_next_visible_sibling(app, parent);
     if(tree_node_is_null(next_sibling)){
         log_info("Parent node has no next visible sibling, cannot move to parent next sibling");
         return;
     }else{
-        TreeNode sibling_begin = ui_first_visible_child(app->ui, next_sibling);
+        TreeNode sibling_begin = ui_first_visible_child(app, next_sibling);
         update_current_with_history(app, sibling_begin);
         log_info("Moved focus to first visible child of parent next sibling");  
     }
@@ -1575,13 +1704,14 @@ static void handle_move_parent_next_sibling_begin(AppState *app) {
 
 static void handle_move_focus_last_child(AppState *app) {
     log_debug("[handle_move_focus_last_child] Moving focus to last child of current node");
-    ui_move_focus_last_child(app->ui);
-    log_debug("[handle_move_focus_last_child] After: current_node id=%lu", tree_node_id(app->ui->current_node));
+    ui_move_focus_last_child(app);
+    log_debug("[handle_move_focus_last_child] After: current_node id=%lu", tree_node_id(app->current_node));
 }
 
 static void handle_move_focus_home(AppState *app) {
+    dont_adjust_doc_view_by_current = false;
     
-    TreeNode node = app->ui->current_node;
+    TreeNode node = app->current_node;
     if(!tree_node_has_parent(app->tree_overlay,node)){
         log_info("Already at home node, no need to move focus");
         return;
@@ -1590,7 +1720,7 @@ static void handle_move_focus_home(AppState *app) {
         node = tree_node_parent(app->tree_overlay, node);
     } 
     update_current_with_history(app, node);
-    log_debug("[handle_move_focus_home] Moved focus to home (top-level) node id=%lu", tree_node_id(app->ui->current_node));
+    log_debug("[handle_move_focus_home] Moved focus to home (top-level) node id=%lu", tree_node_id(app->current_node));
     
 }
 
@@ -1607,22 +1737,22 @@ static bool is_term_definition_node(TreeNode node) {
 }
 
 static void handle_move_focus_term_root(AppState *app){
-    TreeNode node = app->ui->current_node;
+    TreeNode node = app->current_node;
     TreeNode parent = tree_node_parent(app->tree_overlay, node);
     while(!tree_node_is_null(parent)){
         if(is_term_definition_node(parent)){
             update_current_with_history(app, parent);
-            log_debug("[handle_move_focus_term_root] Moved focus to term root node id=%lu", tree_node_id(app->ui->current_node));
+            log_debug("[handle_move_focus_term_root] Moved focus to term root node id=%lu", tree_node_id(app->current_node));
             return;
         }
         parent = tree_node_parent(app->tree_overlay, parent);
     }
     log_info("No term root found, cannot move focus to term root");
-    ui_info_set_message(app->ui, "Term root not found");
+    app_ui_info_set_message(app, "Term root not found");
 }
 
 static void handle_move_focus_most_left_upper(AppState *app){
-    TreeNode node = app->ui->current_node;
+    TreeNode node = app->current_node;
     while(true){
         TreeNode left_child = tree_node_first_child(app->tree_overlay, node);
         if(tree_node_is_null(left_child)){
@@ -1631,7 +1761,7 @@ static void handle_move_focus_most_left_upper(AppState *app){
         node = left_child;
     }
     update_current_with_history(app, node);
-    log_debug("[handle_move_focus_most_left_upper] Moved focus to most left upper node id=%lu", tree_node_id(app->ui->current_node));
+    log_debug("[handle_move_focus_most_left_upper] Moved focus to most left upper node id=%lu", tree_node_id(app->current_node));
 }
 
 static TreeNode app_node_primary_leaf(TreeOverlay *overlay, TreeNode node){
@@ -1659,7 +1789,7 @@ static TreeNode app_node_last_leaf(TreeOverlay *overlay, TreeNode node){
 }
 
 static void handle_move_focus_most_left_lower(AppState *app){
-    TreeNode node = app->ui->current_node;
+    TreeNode node = app->current_node;
     while(true){
         TreeNode right_child = tree_node_last_child(app->tree_overlay, node);
         if(tree_node_is_null(right_child)){
@@ -1668,25 +1798,25 @@ static void handle_move_focus_most_left_lower(AppState *app){
         node = right_child;
     }
     update_current_with_history(app, node);
-    log_debug("[handle_move_focus_most_left_lower] Moved focus to most left lower node id=%lu", tree_node_id(app->ui->current_node));
+    log_debug("[handle_move_focus_most_left_lower] Moved focus to most left lower node id=%lu", tree_node_id(app->current_node));
 }
 
 static bool handle_move_focus_current_task(AppState *app) {
     TreeNode current_task_node = app_metadata_value_node(app, APP_META_CURRENT_TASK );
     if(tree_node_is_null(current_task_node)){
         log_info("No current task set, cannot move focus to current task");
-        ui_info_set_message(app->ui, "No current task set");
+        app_ui_info_set_message(app, "No current task set");
         return false;
     }
     uint64_t node_id = strtoull(tree_node_text(current_task_node), NULL, 10);
     TreeNode node = tree_find_by_id(app->tree_overlay, node_id);
     if(tree_node_is_null(node)){
         log_warn("Current task node id=%lu not found", node_id);
-        ui_info_set_message(app->ui, "Current task node not found");
+        app_ui_info_set_message(app, "Current task node not found");
         return false;
     }
     update_current_with_history(app, node);
-    log_debug("[handle_move_focus_current_task] Moved focus to current task node id=%lu", tree_node_id(app->ui->current_node));
+    log_debug("[handle_move_focus_current_task] Moved focus to current task node id=%lu", tree_node_id(app->current_node));
     return true;
 }
 
@@ -1696,7 +1826,7 @@ static void handle_jump_back(AppState *app) {
         log_info("Jump back stack is empty, cannot jump back");
         return;
     }
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     stack_push(app->jump_forward_stack, (void*)(uintptr_t)tree_node_id(current));
 
     uint64_t node_id = (uint64_t)(uintptr_t)stack_pop(app->jump_back_stack);
@@ -1705,8 +1835,8 @@ static void handle_jump_back(AppState *app) {
         log_warn("Jump back target node id=%lu not found", node_id);
         return;
     }
-    app->ui->current_node = node;
-    log_debug("[handle_jump_back] After: current_node id=%lu", tree_node_id(app->ui->current_node));
+    app->current_node = node;
+    log_debug("[handle_jump_back] After: current_node id=%lu", tree_node_id(app->current_node));
 }
 
 static void handle_jump_forward(AppState *app) {
@@ -1715,7 +1845,7 @@ static void handle_jump_forward(AppState *app) {
         log_info("Jump forward stack is empty, cannot jump forward");
         return;
     }
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     stack_push(app->jump_back_stack, (void*)(uintptr_t)tree_node_id(current));
 
     uint64_t node_id = (uint64_t)(uintptr_t)stack_pop(app->jump_forward_stack);
@@ -1724,13 +1854,13 @@ static void handle_jump_forward(AppState *app) {
         log_warn("Jump forward target node id=%lu not found", node_id);
         return;
     }
-    app->ui->current_node = node;
-    log_debug("[handle_jump_forward] After: current_node id=%lu", tree_node_id(app->ui->current_node));
+    app->current_node = node;
+    log_debug("[handle_jump_forward] After: current_node id=%lu", tree_node_id(app->current_node));
 }
 
 static void handle_mark_node(AppState *app, UserOperation uo) {
     TreeNode bookmarks = app_metadata_key_node(app->operate, APP_META_BOOKMARK_NAME); 
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     uint64_t current_id = tree_node_id(current);
     static char current_id_str[32];
     sprintf(current_id_str, "%llu", current_id);
@@ -1745,7 +1875,7 @@ static void handle_mark_node(AppState *app, UserOperation uo) {
     }else{
         log_debug("Set bookmark for key %c to node id=%lu", mark_key, current_id);
     }
-    ui_info_set_message(app->ui, "Set bookmark '%c' for current node", mark_key[0]);
+    app_ui_info_set_message(app, "Set bookmark '%c' for current node", mark_key[0]);
 }
 
 static void handle_jump_to_mark(AppState *app, UserOperation uo) {
@@ -1766,12 +1896,12 @@ static void handle_jump_to_mark(AppState *app, UserOperation uo) {
     }
     update_current_with_history(app, node);
     log_debug("Jumped to bookmark %c at node id=%lu", mark_key, node_id);
-    ui_info_set_message(app->ui, "Jumped to bookmark '%c'", mark_key[0]);
+    app_ui_info_set_message(app, "Jumped to bookmark '%c'", mark_key[0]);
 }
 
 static void handle_jump_to_ui_node_mark(AppState *app, UserOperation uo) {
     int mark_idx = uo.param1;
-    uint64_t node_id = app->ui->node_marks[mark_idx];
+    uint64_t node_id = app->node_marks[mark_idx];
     if(node_id == 0){
         log_warn("No UI node mark found for index %d", mark_idx);
         return;
@@ -1782,17 +1912,17 @@ static void handle_jump_to_ui_node_mark(AppState *app, UserOperation uo) {
         return;
     }
     update_current_with_history(app, node);
-    app->ui->mark_and_show_visible_nodes = false;
+    app->mark_and_show_visible_nodes = false;
     log_debug("Jumped to UI node mark %d at node id=%lu", mark_idx, node_id);
-    ui_info_set_message(app->ui, "Jumped to UI node mark %d", mark_idx);
+    app_ui_info_set_message(app, "Jumped to UI node mark %d", mark_idx);
 }
 
 static void handle_index_from_root(AppState *app) {
     handle_move_focus_home(app);
     while(true){
         handle_fold_level1(app);
-        app->ui->show_child_position = true;
-        ui_render(app->ui);
+        app->show_child_position = true;
+        app->ui_render(app->ui_ctx);
         char next = getchar();
         int pos = 0;
         if('0' <= next && next <= '9'){
@@ -1811,13 +1941,13 @@ static void handle_index_from_root(AppState *app) {
         }
         handle_move_to_child_position(app, pos);
     }
-    app->ui->show_child_position = false;
-    log_debug("[handle_index_from_root] Finished index navigation, current_node id=%lu", tree_node_id(app->ui->current_node));
+    app->show_child_position = false;
+    log_debug("[handle_index_from_root] Finished index navigation, current_node id=%lu", tree_node_id(app->current_node));
 }
 
 static void handle_to_edit_history(AppState *app) {
     log_debug("[handle_to_edit_history] Moving focus to edit history node");
-    uint64_t normal_mode_node_id = tree_node_id(app->ui->current_node);
+    uint64_t normal_mode_node_id = tree_node_id(app->current_node);
     TreeNode edit_history_node = app_metadata_key_node(app->operate, APP_META_EDIT_HISTORY);
     bool edit_history_node_fold = tree_node_is_collapsed( edit_history_node);
 
@@ -1827,7 +1957,7 @@ static void handle_to_edit_history(AppState *app) {
         log_ui_message("Edit history is empty");
         return;
     }
-    app->ui->current_node = last_edit_node;
+    app->current_node = last_edit_node;
     app->operate->mode = OPERATION_MODE_EDIT_HISTORY;
     app->operate->edit_history_node_fold = edit_history_node_fold;
     app->operate->normal_mode_node_id = normal_mode_node_id;
@@ -1836,28 +1966,28 @@ static void handle_to_edit_history(AppState *app) {
 static void handle_send_command(AppState *app){
     if (app->connect == NULL) {
         log_warn("handle_send_command: No active connection to send command");
-        ui_info_set_message(app->ui, "No active connection to send command");
+        app_ui_info_set_message(app, "No active connection to send command");
         return;
     }
     if(app->connect->pause){
-        ui_info_set_message(app->ui, "Connection is paused, cannot send command");
+        app_ui_info_set_message(app, "Connection is paused, cannot send command");
         return;
     }
-    const char *command = tree_node_text(app->ui->current_node);
+    const char *command = tree_node_text(app->current_node);
     int r = connect_send_command(app->connect, command);
     if (r != 0) {
         log_warn("handle_send_command: Failed to send command through connection");
-        ui_info_set_message(app->ui, "Failed to send command through connection");
+        app_ui_info_set_message(app, "Failed to send command through connection");
     }
     else {
         log_debug("handle_send_command: Sent command through connection: %s", command);
-        ui_info_set_message(app->ui, "Sent command through connection: %s", command);
+        app_ui_info_set_message(app, "Sent command through connection: %s", command);
     }
 }
 
 static void handle_create_child_task(AppState *app) {
     handle_move_focus_current_task(app);
-    handle_add_child_to_tail(app, app->ui->current_node);
+    handle_add_child_to_tail(app, app->current_node);
 }
 
 static void handle_create_sibling_task(AppState *app) {
@@ -1885,11 +2015,11 @@ bool tree_node_not_started_with_dot(TreeNode node, void *ctx) {
  */
 static void handle_finish_task(AppState *app){
     handle_move_focus_current_task(app);
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     const char *task_name = tree_node_text(current);
     if(strcmp( APP_TASK_STACK_NAME, task_name) == 0){
         log_info("This is the root task, Enjoy your life!");
-        ui_info_set_message(app->ui, "This is the root task, Enjoy your life!");
+        app_ui_info_set_message(app, "This is the root task, Enjoy your life!");
         return;
     }
     char time_str[32];
@@ -1909,7 +2039,7 @@ static void handle_finish_task(AppState *app){
     
     if(tree_node_is_null(next_current)){
         log_error("Failed to find next current after finishing task, this should not happen");
-        ui_info_set_message(app->ui, "Failed to find next current after finishing task, this should not happen");
+        app_ui_info_set_message(app, "Failed to find next current after finishing task, this should not happen");
         return;
     }
     TreeNode parent = tree_node_parent(app->tree_overlay, current);
@@ -1931,7 +2061,7 @@ static void handle_finish_task(AppState *app){
     handle_as_current_task(app, next_current);
     
     log_info("Finished task '%s'", task_name);
-    ui_info_set_message(app->ui, "Finished task '%s'", task_name);
+    app_ui_info_set_message(app, "Finished task '%s'", task_name);
 
 }
 
@@ -1988,10 +2118,10 @@ static bool is_task_stack_task(TreeOverlay *tree_overlay, TreeNode node) {
 }
 
 static void handle_next_task(AppState *app) {
-    if(!is_task_stack_task(app->tree_overlay, app->ui->current_node)){
+    if(!is_task_stack_task(app->tree_overlay, app->current_node)){
         handle_move_focus_current_task(app);
     }
-    TreeNode sibling = task_find_next(app, app->ui->current_node);    
+    TreeNode sibling = task_find_next(app, app->current_node);    
     update_current_with_history(app, sibling);
 }
 
@@ -2013,10 +2143,10 @@ static TreeNode task_find_prev(AppState *app, TreeNode task_node) {
 }
 
 static void handle_prev_task(AppState *app) {
-    TreeNode prev_task = task_find_prev(app, app->ui->current_node);
-    if(tree_node_id(prev_task) == tree_node_id(app->ui->current_node)){
+    TreeNode prev_task = task_find_prev(app, app->current_node);
+    if(tree_node_id(prev_task) == tree_node_id(app->current_node)){
         log_info("No previous task found");
-        ui_info_set_message(app->ui, "No previous task found");
+        app_ui_info_set_message(app, "No previous task found");
         return;
     }
     update_current_with_history(app, prev_task);
@@ -2033,7 +2163,7 @@ static void handle_prev_task(AppState *app) {
     }
     event_destroy(event);
     log_info("Moved to previous task '%s'", tree_node_text(prev_task));
-    ui_info_set_message(app->ui, "Moved to previous task '%s'", tree_node_text(prev_task));
+    app_ui_info_set_message(app, "Moved to previous task '%s'", tree_node_text(prev_task));
 }
 
 static void handle_as_current_task(AppState *app, TreeNode node) {
@@ -2075,20 +2205,20 @@ static void handle_as_current_task(AppState *app, TreeNode node) {
         log_error("Failed to commit transaction for setting current task");
         exit(1);
     }
-    if(tree_node_id(current) != tree_node_id(app->ui->current_node)){
+    if(tree_node_id(current) != tree_node_id(app->current_node)){
         update_current_with_history(app, current);
     }
-    ui_info_set_message(app->ui, "Set current task to '%s'", task_name);
+    app_ui_info_set_message(app, "Set current task to '%s'", task_name);
 }
 
 static void handle_ask_ai(AppState *app, UserOperation uo) {
     if(!connect_is_connected(app->connect)){
         log_info("handle_ask_ai: No active connection, cannot ask AI");
-        ui_info_set_message(app->ui, "No active connection, cannot ask AI");
+        app_ui_info_set_message(app, "No active connection, cannot ask AI");
         return;
     }
     const char *ask_ai_cmd = "ollama run gpt-oss:120b-cloud";
-    TreeNode ask_ai_cmd_node = context_metadata_get(app, app->ui->current_node, CONTEXT_META_ASK_AI_CMD);
+    TreeNode ask_ai_cmd_node = context_metadata_get(app, app->current_node, CONTEXT_META_ASK_AI_CMD);
     if(!tree_node_is_null(ask_ai_cmd_node)){
         const char *custom_cmd = tree_node_text(ask_ai_cmd_node);
         if(custom_cmd != NULL && strlen(custom_cmd) > 0){
@@ -2100,7 +2230,7 @@ static void handle_ask_ai(AppState *app, UserOperation uo) {
     switch(uo.param1){
         case QUERY_SCOPE_CURRENT_NODE:
         case QUERY_SCOPE_SUBTREE:
-            operate_ask_ai(app->operate, app->ui->current_node, uo.param1);
+            operate_ask_ai(app->operate, app->current_node, uo.param1);
             break;
         default:
             log_debug("[handle_ask_ai] Asking AI with unknown param %c, treating as continue", uo.param1);
@@ -2111,17 +2241,17 @@ static void handle_ask_ai(AppState *app, UserOperation uo) {
     int r = connect_send_command(app->connect, command);
     if (r != 0) {
         log_warn("handle_ask_ai: Failed to send ask AI command through connection");
-        ui_info_set_message(app->ui, "Failed to send ask AI command through connection");
+        app_ui_info_set_message(app, "Failed to send ask AI command through connection");
     }
      else {
         log_debug("handle_ask_ai: Sent ask AI command through connection: %s", command);
-        ui_info_set_message(app->ui, "Sent ask AI command through connection: %s", command);
+        app_ui_info_set_message(app, "Sent ask AI command through connection: %s", command);
     }
 }
 
 static void handle_shell_above(AppState *app) {
     log_debug("[handle_shell_above] Executing shell above");
-    TreeNode shell = context_metadata_get(app, app->ui->current_node, CONTEXT_META_SHELL);
+    TreeNode shell = context_metadata_get(app, app->current_node, CONTEXT_META_SHELL);
     const char *shell_cmd = tree_node_is_null(shell) ?
         "sh" : tree_node_text(shell);
     
@@ -2129,7 +2259,7 @@ static void handle_shell_above(AppState *app) {
     if(app->connect == NULL){
         log_warn("[handle_shell_above]: Failed to create shell above connection");
     }             
-    ui_info_set_message(app->ui, "Connected to shell above, pane=%s", app->connect->pane_id);
+    app_ui_info_set_message(app, "Connected to shell above, pane=%s", app->connect->pane_id);
 }
 
 TreeNode app_ensure_task_stack(AppState *app) {
@@ -2174,7 +2304,7 @@ void handle_add_new_task(AppState *app) {
     TreeNode current = tree_find_by_id(app->tree_overlay, event->new_node_id);
     event_destroy(event);
     update_current_with_history(app, current);
-    ui_render(app->ui);
+    app->ui_render(app->ui_ctx);
 
     TreeNode current_task_value = app_metadata_value_node(app, APP_META_CURRENT_TASK);
     event = event_create_update_text(
@@ -2186,8 +2316,7 @@ void handle_add_new_task(AppState *app) {
         log_warn("handle_add_new_task: Failed to update current task text");
     }
 
-    char tc;
-    handle_edit_node(app, current, &tc);
+    handle_edit_node(app);
 
     node_metadata_set(app, current, APP_META_CURRENT_TASK, current_task_id_str);
 
@@ -2195,29 +2324,31 @@ void handle_add_new_task(AppState *app) {
 }
 
 static void handle_command_mode(AppState *app) {
-    log_debug("[handle_command_mode] Switching to command mode");
-    char *command = ui_get_command(app->ui);
-    MindCommand cmd = command_parse_command(command);
+    app->input_state->type = INPUT_STATE_TYPE_GET_COMMAND;
+}
+
+static void handle_do_command(AppState *app) {
+    MindCommand cmd = command_parse_command(app->command);
     switch(cmd.type){
         case CMD_COUNT_NODES:{
-            uint64_t count = operate_count_subtree_nodes(app->operate, app->ui->current_node);
-            ui_info_set_message(app->ui, "Subtree node count: %lu", count);
+            uint64_t count = operate_count_subtree_nodes(app->operate, app->current_node);
+            app_ui_info_set_message(app, "Subtree node count: %lu", count);
             log_info("Subtree node count: %lu", count);
             break;
         }
         case CMD_ENABLE_HIDE:
-            app->ui->global_enable_hide = true;
-            ui_info_set_message(app->ui, "Global hide enabled");
+            app->global_enable_hide = true;
+            app_ui_info_set_message(app, "Global hide enabled");
             log_info("Global hide enabled");
             break;
         case CMD_DISABLE_HIDE:
-            app->ui->global_enable_hide = false;
-            ui_info_set_message(app->ui, "Global hide disabled");
+            app->global_enable_hide = false;
+            app_ui_info_set_message(app, "Global hide disabled");
             log_info("Global hide disabled");
             break;
         case CMD_SET_FLAG_HIDDEN:{
             Event *event = event_create_set_hidden(
-                tree_node_id(app->ui->current_node),
+                tree_node_id(app->current_node),
                 true
             );
             int r = operate_commit_event(app->operate, event);
@@ -2228,7 +2359,7 @@ static void handle_command_mode(AppState *app) {
         }
         case CMD_UNSET_FLAG_HIDDEN:{
             Event *event = event_create_set_hidden(
-                tree_node_id(app->ui->current_node),
+                tree_node_id(app->current_node),
                 false
             );
             int r = operate_commit_event(app->operate, event);
@@ -2238,7 +2369,7 @@ static void handle_command_mode(AppState *app) {
             break;
         }
         case CMD_INFO_NODE:{
-            TreeNode n = app->ui->current_node;
+            TreeNode n = app->current_node;
             bool is_hidden = tree_node_hidden(n);
             static char info_buffer[4096];
             sprintf(info_buffer, "Node ID: %llu\nHeight: %llu\nDescendents: %llu\nName: %s, Hidden: %s", 
@@ -2248,13 +2379,13 @@ static void handle_command_mode(AppState *app) {
                 tree_node_text(n),
                 is_hidden ? "true" : "false"
             );
-            ui_info_set_message(app->ui, "%s", info_buffer);
+            app_ui_info_set_message(app, "%s", info_buffer);
             log_info("Node info:\n%s", info_buffer);
             break;
         }
         case CMD_SET_FLAG_SHOW_HIDDEN_CHILDREN:{
             Event *event = event_create_set_show_hidden_children(
-                tree_node_id(app->ui->current_node),
+                tree_node_id(app->current_node),
                 true
             );
             int r = operate_commit_event(app->operate, event);
@@ -2265,7 +2396,7 @@ static void handle_command_mode(AppState *app) {
         }
         case CMD_UNSET_FLAG_SHOW_HIDDEN_CHILDREN:{
             Event *event = event_create_set_show_hidden_children(
-                tree_node_id(app->ui->current_node),
+                tree_node_id(app->current_node),
                 false
             );
             int r = operate_commit_event(app->operate, event);
@@ -2291,8 +2422,8 @@ static void handle_command_mode(AppState *app) {
         }
         case CMD_EDIT_NODE:{
             log_debug("handle_command_mode: Editing current node");
-            operate_edit_node(app->operate, app->ui->current_node);
-            app->ui->current_node = tree_find_by_id(app->tree_overlay, tree_node_id(app->ui->current_node));
+            operate_edit_node(app->operate, app->current_node);
+            app->current_node = tree_find_by_id(app->tree_overlay, tree_node_id(app->current_node));
             break;
         }
         case CMD_NEW_TASK:{
@@ -2301,17 +2432,17 @@ static void handle_command_mode(AppState *app) {
         }
         case CMD_RESET_LAYOUT:{
             log_debug("handle_command_mode: Resetting tree layout");
-            ui_reset_layout(app->ui);
+            app->ui_reset_layout(app->ui_ctx);
             break;
         }
         case CMD_DEBUG_FIX_VIEW:{
             log_debug("handle_command_mode: Debug fix view");
-            app->ui->fix_view = true;
+            app->fix_view = true;
             break;
         }
         case CMD_DEBUG_DELETE:{
             log_debug("handle_command_mode: Debug delete node id=%s", cmd.args);
-            TreeNode current = app->ui->current_node;
+            TreeNode current = app->current_node;
             TreeNode prev_sibling = tree_node_prev_sibling(app->tree_overlay, current);
             TreeNode next_sibling = tree_node_next_sibling(app->tree_overlay, current);
             if(tree_node_is_null(prev_sibling)){
@@ -2333,7 +2464,7 @@ static void handle_command_mode(AppState *app) {
         case CMD_SHELL_PAUSE:{
             if(app->connect->pause){
                 log_warn("handle_command_mode: Shell is already paused");
-                ui_info_set_message(app->ui, "Shell is already paused");
+                app_ui_info_set_message(app, "Shell is already paused");
                 break;
             }
             app->connect->pause = true;
@@ -2348,7 +2479,7 @@ static void handle_command_mode(AppState *app) {
         case CMD_SHELL_RESUME:{
             if(!app->connect->pause){
                 log_warn("handle_command_mode: Cannot resume shell because it is not paused");
-                ui_info_set_message(app->ui, "Cannot resume shell because it is not paused");
+                app_ui_info_set_message(app, "Cannot resume shell because it is not paused");
                 break;
             }
             app->connect->pause = false;
@@ -2365,11 +2496,10 @@ static void handle_command_mode(AppState *app) {
             break;
         }
     }
-    free(command);
 }
 
-static void update_current_with_history(AppState *app, TreeNode new_position) {
-    uint64_t current_node_id = tree_node_id(app->ui->current_node);
+void update_current_with_history(AppState *app, TreeNode new_position) {
+    uint64_t current_node_id = tree_node_id(app->current_node);
 
     stack_push(app->jump_back_stack, (void*)(uintptr_t)current_node_id);
 
@@ -2377,49 +2507,55 @@ static void update_current_with_history(AppState *app, TreeNode new_position) {
         stack_pop(app->jump_forward_stack);
     }
 
-    app->ui->current_node = new_position;
+    app->current_node = new_position;
     
 }
 
 void handle_search(AppState *app){
+    app->input_state->type = INPUT_STATE_TYPE_SEARCH_QUERY;
+    app->ui_get_search_query(app->ui_ctx);
+}
+void handle_do_search(AppState *app, UserOperation uo){
     log_debug("[handle_search] Initiating search");
     app->operate->search_direction = SEARCH_DIRECTION_FORWARD;
-    char *query = ui_get_search_query(app->ui);
+    char *query = uo.data;
     snprintf(app->operate->search_query, sizeof(app->operate->search_query), "%s", query);
     if(query == NULL || strlen(query) == 0){
         log_debug("handle_search: Empty search query, aborting");
         return;
     }
     log_debug("handle_search: Searching for query '%s'", query);
-    TreeNode result = operate_search_next(app->operate, app->ui->current_node);
+    TreeNode result = operate_search_next(app->operate, app->current_node);
     if(tree_node_is_null(result)){
-        ui_info_set_message(app->ui, "No more matches for '%s'", query);
+        app_ui_info_set_message(app, "No more matches for '%s'", query);
         log_info("No more matches found for query '%s'", query);
     }else{
         update_current_with_history(app, result);
-        ui_info_set_message(app->ui, "Found match for '%s' at node id=%lu", query, tree_node_id(result));
+        app_ui_info_set_message(app, "Found match for '%s' at node id=%lu", query, tree_node_id(result));
         log_info("Found match for query '%s' at node id=%lu", query, tree_node_id(result));
     }
     free(query);
 }
 
 void handle_search_backward(AppState *app){
-    log_debug("[handle_search_backward] Initiating backward search");
+    app->input_state->type = INPUT_STATE_TYPE_SEARCH_BACKWARD_QUERY;
+}
+void handle_do_search_backward(AppState *app){
+    char *query = app->search_query;
     app->operate->search_direction = SEARCH_DIRECTION_BACKWARD;
-    char *query = ui_get_search_backward_query(app->ui);
     snprintf(app->operate->search_query, sizeof(app->operate->search_query), "%s", query);
     if(query == NULL || strlen(query) == 0){
         log_debug("handle_search_backward: Empty search query, aborting");
         return;
     }
     log_debug("handle_search_backward: Searching backward for query '%s'", query);
-    TreeNode result = operate_search_next(app->operate, app->ui->current_node);
+    TreeNode result = operate_search_next(app->operate, app->current_node);
     if(tree_node_is_null(result)){
-        ui_info_set_message(app->ui, "No previous matches for '%s'", query);
+        app_ui_info_set_message(app, "No previous matches for '%s'", query);
         log_info("No previous matches found for query '%s'", query);
     }else{
         update_current_with_history(app, result);
-        ui_info_set_message(app->ui, "Found match for '%s' at node id=%lu", query, tree_node_id(result));
+        app_ui_info_set_message(app, "Found match for '%s' at node id=%lu", query, tree_node_id(result));
         log_info("Found match for query '%s' at node id=%lu", query, tree_node_id(result));
     }
     free(query);
@@ -2432,13 +2568,13 @@ void handle_search_next(AppState *app){
         log_debug("handle_search_next: No previous search query, aborting");
         return;
     }
-    TreeNode result = operate_search_next(app->operate, app->ui->current_node);
+    TreeNode result = operate_search_next(app->operate, app->current_node);
     if(tree_node_is_null(result)){
-        ui_info_set_message(app->ui, "No more matches for '%s'", operate->search_query);
+        app_ui_info_set_message(app, "No more matches for '%s'", operate->search_query);
         log_info("No more matches found for query '%s'", operate->search_query);
     }else{
         update_current_with_history(app, result);
-        ui_info_set_message(app->ui, "Found match for '%s' at node id=%lu", operate->search_query, tree_node_id(result));
+        app_ui_info_set_message(app, "Found match for '%s' at node id=%lu", operate->search_query, tree_node_id(result));
         log_info("Found match for query '%s' at node id=%lu", operate->search_query, tree_node_id(result));
     }
 }
@@ -2450,75 +2586,75 @@ void handle_search_prev(AppState *app){
         log_debug("handle_search_prev: No previous search query, aborting");
         return;
     }
-    TreeNode result = operate_search_prev(app->operate, app->ui->current_node);
+    TreeNode result = operate_search_prev(app->operate, app->current_node);
     if(tree_node_is_null(result)){
-        ui_info_set_message(app->ui, "No previous matches for '%s'", operate->search_query);
+        app_ui_info_set_message(app, "No previous matches for '%s'", operate->search_query);
         log_info("No previous matches found for query '%s'", operate->search_query);
     }else{
         update_current_with_history(app, result);
-        ui_info_set_message(app->ui, "Found match for '%s' at node id=%lu", operate->search_query, tree_node_id(result));
+        app_ui_info_set_message(app, "Found match for '%s' at node id=%lu", operate->search_query, tree_node_id(result));
         log_info("Found match for query '%s' at node id=%lu", operate->search_query, tree_node_id(result));
     }
 }
 
 void handle_search_next_exact(AppState *app){
     Operate *operate = app->operate;
-    const char *query = tree_node_text(app->ui->current_node);
+    const char *query = tree_node_text(app->current_node);
     if(!query || strlen(query) == 0){
-        ui_info_set_message(app->ui, "Current node text is empty");
+        app_ui_info_set_message(app, "Current node text is empty");
         return;
     }
 
     snprintf(operate->search_query, sizeof(operate->search_query), "%s", query);
-    TreeNode result = operate_search_next_exact(operate, app->ui->current_node, query);
+    TreeNode result = operate_search_next_exact(operate, app->current_node, query);
     if(tree_node_is_null(result)){
-        ui_info_set_message(app->ui, "No next exact matches for '%s'", query);
+        app_ui_info_set_message(app, "No next exact matches for '%s'", query);
         log_info("No next exact matches for query '%s'", query);
     }else{
         update_current_with_history(app, result);
-        ui_info_set_message(app->ui, "Found exact match '%s' at node id=%lu", query, tree_node_id(result));
+        app_ui_info_set_message(app, "Found exact match '%s' at node id=%lu", query, tree_node_id(result));
         log_info("Found next exact match for query '%s' at node id=%lu", query, tree_node_id(result));
     }
 }
 
 void handle_search_prev_exact(AppState *app){
     Operate *operate = app->operate;
-    const char *query = tree_node_text(app->ui->current_node);
+    const char *query = tree_node_text(app->current_node);
     if(!query || strlen(query) == 0){
-        ui_info_set_message(app->ui, "Current node text is empty");
+        app_ui_info_set_message(app, "Current node text is empty");
         return;
     }
 
     snprintf(operate->search_query, sizeof(operate->search_query), "%s", query);
-    TreeNode result = operate_search_prev_exact(operate, app->ui->current_node, query);
+    TreeNode result = operate_search_prev_exact(operate, app->current_node, query);
     if(tree_node_is_null(result)){
-        ui_info_set_message(app->ui, "No previous exact matches for '%s'", query);
+        app_ui_info_set_message(app, "No previous exact matches for '%s'", query);
         log_info("No previous exact matches for query '%s'", query);
     }else{
         update_current_with_history(app, result);
-        ui_info_set_message(app->ui, "Found exact match '%s' at node id=%lu", query, tree_node_id(result));
+        app_ui_info_set_message(app, "Found exact match '%s' at node id=%lu", query, tree_node_id(result));
         log_info("Found previous exact match for query '%s' at node id=%lu", query, tree_node_id(result));
     }
 }
 
 static void handle_search_engine(AppState *app) {
-    TreeNode parent = tree_node_parent(app->tree_overlay, app->ui->current_node);
+    TreeNode parent = tree_node_parent(app->tree_overlay, app->current_node);
     const char *parent_text = tree_node_text(parent);
     char search_template_meta_key[64];
     snprintf(search_template_meta_key, sizeof(search_template_meta_key), "%s%s", CONTEXT_META_SEARCH_TEMPLATE_PREFIX, parent_text);
-    TreeNode search_template_node = context_metadata_get(app, app->ui->current_node, search_template_meta_key);
+    TreeNode search_template_node = context_metadata_get(app, app->current_node, search_template_meta_key);
     char search_template[64];
     snprintf(search_template, sizeof(search_template), "{%s}", parent_text);
     if(!tree_node_is_null(search_template_node)){
         if(strstr(tree_node_text(search_template_node), search_template) == NULL){
             log_warn("handle_search_engine: Search template for parent node '%s' does not contain variable '%s'", parent_text, search_template);
-            ui_info_set_message(app->ui, "Search template for parent node '%s' does not contain variable '%s', using default search engine", parent_text, search_template);
+            app_ui_info_set_message(app, "Search template for parent node '%s' does not contain variable '%s', using default search engine", parent_text, search_template);
             goto default_search_engine;
         }
         UriTemplateVar vars[] = {
             {
                 .name = parent_text,
-                .value = tree_node_text(app->ui->current_node)
+                .value = tree_node_text(app->current_node)
             }
         };
         char rendered[2048];
@@ -2526,7 +2662,7 @@ static void handle_search_engine(AppState *app) {
          rendered, sizeof(rendered));
         if(r != 0){
             log_warn("handle_search_engine: Failed to expand search template for parent node '%s'", parent_text);
-            ui_info_set_message(app->ui, "Failed to expand search template for parent node '%s', using default search engine", parent_text);
+            app_ui_info_set_message(app, "Failed to expand search template for parent node '%s', using default search engine", parent_text);
             goto default_search_engine;
         }
         log_debug("[handle_search_engine] Opening URL from search template: %s", rendered);
@@ -2539,7 +2675,7 @@ static void handle_search_engine(AppState *app) {
         r = posix_spawnp(&pid, "open", NULL, NULL, argv, NULL);
         if (r != 0) {
             log_error("handle_search_engine: Failed to spawn process to open URL from search template");
-            ui_info_set_message(app->ui, "Failed to open URL from search template");
+            app_ui_info_set_message(app, "Failed to open URL from search template");
         }
         log_debug("[handle_search_engine] Spawned process with PID: %d to open URL from search template", pid);
         return;
@@ -2547,7 +2683,7 @@ static void handle_search_engine(AppState *app) {
 
 default_search_engine:
     const char *url_format = "https://www.google.com/search?q=%.*s";
-    const char *query = tree_node_text(app->ui->current_node);
+    const char *query = tree_node_text(app->current_node);
     int query_len = strlen(query);
     int left_bracket_count = 0;
     for(int i = 0; 
@@ -2578,10 +2714,10 @@ default_search_engine:
 }
 
 static void handle_open_resource_link(AppState *app){
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     TreeNode parent = tree_node_parent(app->tree_overlay, current);
     const char *parent_text = tree_node_text(parent);
-    const char *URL = tree_node_text(app->ui->current_node);
+    const char *URL = tree_node_text(app->current_node);
     pid_t pid;
     char **spawn_argv;
     
@@ -2611,7 +2747,7 @@ static void handle_open_resource_link(AppState *app){
     char *man_section = "";
     if(strcmp(resource_key, "section") == 0){
         log_warn("Resource type 'section' is reserved for man sections and cannot be used in resource links");
-        ui_info_set_message(app->ui, "Resource type 'section' is reserved for man sections and cannot be used in resource links");
+        app_ui_info_set_message(app, "Resource type 'section' is reserved for man sections and cannot be used in resource links");
         return;
     }
     if(strcmp(resource_key, "man") == 0){
@@ -2619,7 +2755,7 @@ static void handle_open_resource_link(AppState *app){
         char *dot = strchr(resource_id, '.');
         if(dot == NULL){
             log_warn("Invalid man page reference '%s', expected format 'name.section'", resource_id);
-            ui_info_set_message(app->ui, "Invalid man page reference '%s', expected format 'name.section'", resource_id);
+            app_ui_info_set_message(app, "Invalid man page reference '%s', expected format 'name.section'", resource_id);
             return;
         }
         man_section = dot + 1;
@@ -2628,7 +2764,7 @@ static void handle_open_resource_link(AppState *app){
                 continue;
             }else{
                 log_warn("Invalid man page section '%s' in reference '%s', expected numeric section", man_section, resource_id);
-                ui_info_set_message(app->ui, "Invalid man page section '%s' in reference '%s', expected numeric section", man_section, resource_id);
+                app_ui_info_set_message(app, "Invalid man page section '%s' in reference '%s', expected numeric section", man_section, resource_id);
                 return;
             }
         }
@@ -2649,7 +2785,7 @@ static void handle_open_resource_link(AppState *app){
      rendered, sizeof(rendered));
     if(r != 0){
         log_warn("Failed to expand resource template for resource type '%.*s'", resource_type_len, URL);
-        ui_info_set_message(app->ui, "Failed to expand resource template for resource type '%.*s'", resource_type_len, URL);
+        app_ui_info_set_message(app, "Failed to expand resource template for resource type '%.*s'", resource_type_len, URL);
         return;
     }
     // open the rendered URL with default application
@@ -2680,7 +2816,7 @@ not_MediaWiki_style_ref:
     snprintf(template_var_name, sizeof(template_var_name), "{%s}", parent_text);
     if(strstr(resource_template, template_var_name) == NULL){
         log_warn("handle_open_resource_link: Resource template for parent node '%s' does not contain variable '%s'", parent_text, template_var_name);
-        ui_info_set_message(app->ui, "Resource template for parent node '%s' does not contain variable '%s'", parent_text, template_var_name);
+        app_ui_info_set_message(app, "Resource template for parent node '%s' does not contain variable '%s'", parent_text, template_var_name);
         goto special_parent_type;
     }
     resource_id = tree_node_text(current);
@@ -2706,7 +2842,7 @@ not_MediaWiki_style_ref:
         return;
     }else{
         log_error("handle_open_resource_link: Failed to expand resource template based on parent node '%s'", parent_text);
-        ui_info_set_message(app->ui, "Failed to expand resource template based on parent node '%s'", parent_text);
+        app_ui_info_set_message(app, "Failed to expand resource template based on parent node '%s'", parent_text);
         return;
     }
 
@@ -2727,7 +2863,7 @@ special_parent_type:
             size_t len = colon - code_path_with_line;
             if(code_path_with_line_len - len > sizeof(line_part)){
                 log_warn("Line part is too long in code resource link, cannot parse line number");
-                ui_info_set_message(app->ui, "Line part is too long in code resource link, cannot parse line number");
+                app_ui_info_set_message(app, "Line part is too long in code resource link, cannot parse line number");
                 return;
             }
             strncpy(code_path_buf, code_path_with_line, len);
@@ -2737,19 +2873,19 @@ special_parent_type:
             strcpy(line_part, colon + 1);
         } 
 
-        TreeNode code_project_root = context_metadata_get(app, app->ui->current_node, CONTEXT_META_CODE_PROJECT_ROOT);
+        TreeNode code_project_root = context_metadata_get(app, app->current_node, CONTEXT_META_CODE_PROJECT_ROOT);
         const char *project_root = tree_node_is_null(code_project_root) ? "." : tree_node_text(code_project_root);
         // check project root exists
         if(access(project_root, F_OK) != 0){
             log_warn("Project root '%s' does not exist, cannot open code resource link", project_root);
-            ui_info_set_message(app->ui, "Project root '%s' does not exist, cannot open code resource link", project_root);
+            app_ui_info_set_message(app, "Project root '%s' does not exist, cannot open code resource link", project_root);
             return;
         }
         static char code_full_path[4096];
         snprintf(code_full_path, sizeof(code_full_path), "%s/%s", project_root, code_path);
         if(access(code_full_path, F_OK) != 0){
             log_warn("Code resource '%s' does not exist under project root '%s', cannot open code resource link", code_path, project_root);
-            ui_info_set_message(app->ui, "Code resource '%s' does not exist under project root '%s', cannot open code resource link", code_path, project_root);
+            app_ui_info_set_message(app, "Code resource '%s' does not exist under project root '%s', cannot open code resource link", code_path, project_root);
             return;
         }
         static char code_full_path_with_line[4096];
@@ -2782,7 +2918,7 @@ special_parent_type:
             size_t len = colon - code_path_with_line;
             if(code_path_with_line_len - len > sizeof(line_part)){
                 log_warn("Line part is too long in code resource link, cannot parse line number");
-                ui_info_set_message(app->ui, "Line part is too long in code resource link, cannot parse line number");
+                app_ui_info_set_message(app, "Line part is too long in code resource link, cannot parse line number");
                 return;
             }
             strncpy(code_path_buf, code_path_with_line, len);
@@ -2792,19 +2928,19 @@ special_parent_type:
             strcpy(line_part, colon + 1);
         } 
 
-        TreeNode code_project_root = context_metadata_get(app, app->ui->current_node, CONTEXT_META_CODE_PROJECT_ROOT);
+        TreeNode code_project_root = context_metadata_get(app, app->current_node, CONTEXT_META_CODE_PROJECT_ROOT);
         const char *project_root = tree_node_is_null(code_project_root) ? "." : tree_node_text(code_project_root);
         // check project root exists
         if(access(project_root, F_OK) != 0){
             log_warn("Project root '%s' does not exist, cannot open code resource link", project_root);
-            ui_info_set_message(app->ui, "Project root '%s' does not exist, cannot open code resource link", project_root);
+            app_ui_info_set_message(app, "Project root '%s' does not exist, cannot open code resource link", project_root);
             return;
         }
         static char code_full_path[4096];
         snprintf(code_full_path, sizeof(code_full_path), "%s/%s", project_root, code_path);
         if(access(code_full_path, F_OK) != 0){
             log_warn("Code resource '%s' does not exist under project root '%s', cannot open code resource link", code_path, project_root);
-            ui_info_set_message(app->ui, "Code resource '%s' does not exist under project root '%s', cannot open code resource link", code_path, project_root);
+            app_ui_info_set_message(app, "Code resource '%s' does not exist under project root '%s', cannot open code resource link", code_path, project_root);
             return;
         } 
         static char vim_line_arg[64];
@@ -2826,7 +2962,7 @@ special_parent_type:
         TreeNode page_node = context_metadata_get(app, current, CONTEXT_META_PAGE);
         if(tree_node_is_null(page_node)){
             log_warn("Current node is a page anchor but no page metadata found, cannot open resource link");
-            ui_info_set_message(app->ui, "Current node is a page anchor but no page metadata found, cannot open resource link");
+            app_ui_info_set_message(app, "Current node is a page anchor but no page metadata found, cannot open resource link");
             return;
         }
         const char *page = tree_node_text(page_node);
@@ -2855,14 +2991,14 @@ special_parent_type:
         char *space = strchr(URL, ' ');
         if(space == NULL){
             log_warn("handle_open_resource_link: Detected potential RFC/JSR/JEP/PEP link but no space found to separate type and number, cannot open resource link");
-            ui_info_set_message(app->ui, "Detected potential RFC/JSR/JEP/PEP link but no space found to separate type and number, cannot open resource link");
+            app_ui_info_set_message(app, "Detected potential RFC/JSR/JEP/PEP link but no space found to separate type and number, cannot open resource link");
             return;
         }
         const char *item = URL + 1;
         int key_len = space - item;
         if(key_len <= 0){
             log_warn("handle_open_resource_link: Detected potential RFC/JSR/JEP/PEP link but no valid key found, cannot open resource link");
-            ui_info_set_message(app->ui, "Detected potential RFC/JSR/JEP/PEP link but no valid key found, cannot open resource link");
+            app_ui_info_set_message(app, "Detected potential RFC/JSR/JEP/PEP link but no valid key found, cannot open resource link");
             return;
         }
         char value[64];
@@ -2875,7 +3011,7 @@ special_parent_type:
             TreeNode page_node = context_metadata_get(app, current, CONTEXT_META_PAGE);
             if(tree_node_is_null(page_node)){
                 log_warn("Current node is a %s link but no page metadata found, cannot open resource link", key);
-                ui_info_set_message(app->ui, "Current node is a %s link but no page metadata found, cannot open resource link", key);
+                app_ui_info_set_message(app, "Current node is a %s link but no page metadata found, cannot open resource link", key);
                 return;
             }
             const char *page = tree_node_text(page_node);
@@ -2904,7 +3040,7 @@ special_parent_type:
     else if(!tree_node_is_null(parent)){
         if(strcmp(parent_text, CONTEXT_WIKI_TERM) == 0){
             const char *term = tree_node_text(current);
-            TreeNode wiki_prefix = context_metadata_get(app, app->ui->current_node, CONTEXT_META_WIKI_PREFIX);
+            TreeNode wiki_prefix = context_metadata_get(app, app->current_node, CONTEXT_META_WIKI_PREFIX);
             const char *url_format;
             if(tree_node_is_null(wiki_prefix)){
                 // use default wiki prefix
@@ -3002,7 +3138,7 @@ static int handle_jump_hierachy_definition(AppState *app, TreeNode subtree_root,
     // For initial lookup, prefer nearest context around current node first.
     TreeNode anchor = subtree_root;
     if (tree_node_id(subtree_root) == tree_node_id(app->tree_overlay->root)) {
-        anchor = app->ui->current_node;
+        anchor = app->current_node;
     }
 
     TreeNode skip_node = (TreeNode){ .kind = TREE_NODE_NULL };
@@ -3067,7 +3203,7 @@ bool app_test_jump_definition_filter(TreeNode node, void *ctx) {
 #endif
 
 static void handle_jump_keyword_definition(AppState *app){
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     const char *current_text = tree_node_text(current);
     char *keys_text = strdup(current_text);
     char *hash_tag = strchr(keys_text, '#'); 
@@ -3082,12 +3218,12 @@ static void handle_jump_keyword_definition(AppState *app){
         TreeNode r = operate_search_hierachy_keys(app->operate, current, (const char **)keys, 2);
         free(keys_text);
         if(tree_node_is_null(r)){
-            ui_info_set_message(app->ui, "No definition found for '%s'", current_text);
+            app_ui_info_set_message(app, "No definition found for '%s'", current_text);
             log_info("No definition found for '%s'", current_text);
         }else{
             update_current_with_history(app, r);
-            ui_info_set_message(app->ui, "Jumped to definition for '%s'", tree_node_text(app->ui->current_node));
-            log_info("Jumped to definition for '%s'", tree_node_text(app->ui->current_node));
+            app_ui_info_set_message(app, "Jumped to definition for '%s'", tree_node_text(app->current_node));
+            log_info("Jumped to definition for '%s'", tree_node_text(app->current_node));
         }
         return;
     }
@@ -3096,21 +3232,21 @@ static void handle_jump_keyword_definition(AppState *app){
     JumpDefinitionFilterContext filter_ctx = {
         .app_metadata_node_id = tree_node_id(app_ensure_metadata_node(app->operate))
     };
-    int r = handle_jump_hierachy_definition(app, app->tree_overlay->root, tree_node_text(app->ui->current_node), jump_definition_filter, &filter_ctx);
+    int r = handle_jump_hierachy_definition(app, app->tree_overlay->root, tree_node_text(app->current_node), jump_definition_filter, &filter_ctx);
     if(r == 0){
-        app->ui->current_node = tree_find_by_id(app->tree_overlay, tree_node_id(app->ui->current_node));
-        ui_info_set_message(app->ui, "Jumped to definition for '%s'", tree_node_text(app->ui->current_node));
-        log_info("Jumped to definition for '%s'", tree_node_text(app->ui->current_node));
+        app->current_node = tree_find_by_id(app->tree_overlay, tree_node_id(app->current_node));
+        app_ui_info_set_message(app, "Jumped to definition for '%s'", tree_node_text(app->current_node));
+        log_info("Jumped to definition for '%s'", tree_node_text(app->current_node));
     }else if(r == 1){
-        ui_info_set_message(app->ui, "No definition found for '%s'", tree_node_text(app->ui->current_node));
-        log_info("No definition found for '%s'", tree_node_text(app->ui->current_node));
+        app_ui_info_set_message(app, "No definition found for '%s'", tree_node_text(app->current_node));
+        log_info("No definition found for '%s'", tree_node_text(app->current_node));
     }else{
-        log_error("Error occurred while searching for definition for '%s'", tree_node_text(app->ui->current_node));
+        log_error("Error occurred while searching for definition for '%s'", tree_node_text(app->current_node));
     }
 }
 
 static void handle_jump_keyword_global_definition(AppState *app){
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     TreeNode root = app->tree_overlay->root;
     // bfs from root
     char search_term[256];
@@ -3121,12 +3257,12 @@ static void handle_jump_keyword_global_definition(AppState *app){
     };
     TreeNode result = operate_bfs_search(app->operate, root, search_term, jump_definition_filter, &filter_ctx);
     if(tree_node_is_null(result)){
-        ui_info_set_message(app->ui, "No global definition found for '%s'", tree_node_text(current));
+        app_ui_info_set_message(app, "No global definition found for '%s'", tree_node_text(current));
         log_info("No global definition found for '%s'", tree_node_text(current));
     }else{
         update_current_with_history(app, result);
-        ui_info_set_message(app->ui, "Jumped to global definition for '%s'", tree_node_text(app->ui->current_node));
-        log_info("Jumped to global definition for '%s'", tree_node_text(app->ui->current_node));
+        app_ui_info_set_message(app, "Jumped to global definition for '%s'", tree_node_text(app->current_node));
+        log_info("Jumped to global definition for '%s'", tree_node_text(app->current_node));
     }
 }
 
@@ -3201,7 +3337,7 @@ static void app_save_current(AppState *app) {
         log_error("app_save_current: Invalid app state or missing tree overlay");
         return;
     }
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     char tree_node_id_str[32];
     sprintf(tree_node_id_str, "%llu", tree_node_id(current));
     app_save_metadata(app, "current_node_id", tree_node_id_str);
@@ -3243,7 +3379,7 @@ void handle_exit_save(AppState *app) {
 }
 
 void handle_move_focus_prev_sibling_in_edit_history_mode(AppState *app) {
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     TreeNode n = tree_node_parent(app->tree_overlay, current);
     TreeNode edit_history_root = app_metadata_key_node(app->operate, APP_META_EDIT_HISTORY);
     uint64_t edit_history_root_id = tree_node_id(edit_history_root);
@@ -3252,15 +3388,15 @@ void handle_move_focus_prev_sibling_in_edit_history_mode(AppState *app) {
         if(tree_node_is_null(sibling)){
             n = tree_node_parent(app->tree_overlay, n);
         }else{
-            app->ui->current_node = app_node_last_leaf(app->tree_overlay, sibling);
+            app->current_node = app_node_last_leaf(app->tree_overlay, sibling);
             return;
         }
     }
-    log_ui_message("No previous sibling found in edit history, staying at current node id=%lu", tree_node_id(app->ui->current_node));
+    log_ui_message("No previous sibling found in edit history, staying at current node id=%lu", tree_node_id(app->current_node));
 }
 
 void handle_move_focus_next_sibling_in_edit_history_mode(AppState *app) {
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     TreeNode n = tree_node_parent(app->tree_overlay, current);
     TreeNode edit_history_root = app_metadata_key_node(app->operate, APP_META_EDIT_HISTORY);
     uint64_t edit_history_root_id = tree_node_id(edit_history_root);
@@ -3269,11 +3405,11 @@ void handle_move_focus_next_sibling_in_edit_history_mode(AppState *app) {
         if(tree_node_is_null(sibling)){
             n = tree_node_parent(app->tree_overlay, n);
         }else{
-            app->ui->current_node = app_node_primary_leaf(app->tree_overlay, sibling);
+            app->current_node = app_node_primary_leaf(app->tree_overlay, sibling);
             return;
         }
     }
-    log_ui_message("No next sibling found in edit history, staying at current node id=%lu", tree_node_id(app->ui->current_node));
+    log_ui_message("No next sibling found in edit history, staying at current node id=%lu", tree_node_id(app->current_node));
 }
 
 static bool is_id_str(const char *str) {
@@ -3290,7 +3426,7 @@ static bool is_id_str(const char *str) {
 
 void handle_back_to_normal_operation_mode(AppState *app) {
     app->operate->mode = OPERATION_MODE_NORMAL;
-    app->ui->current_node = tree_find_by_id(app->tree_overlay, app->operate->normal_mode_node_id);
+    app->current_node = tree_find_by_id(app->tree_overlay, app->operate->normal_mode_node_id);
     if(app->operate->edit_history_node_fold){
         TreeNode edit_history_node = app_metadata_key_node(app->operate, APP_META_EDIT_HISTORY);
         tree_node_set_collapse(app->tree_overlay, &edit_history_node, true);
@@ -3299,7 +3435,7 @@ void handle_back_to_normal_operation_mode(AppState *app) {
 }
 
 void handle_jump_to_underlying_id(AppState *app) {
-    TreeNode current = app->ui->current_node;
+    TreeNode current = app->current_node;
     const char *current_text = tree_node_text(current);
     if(!is_id_str(current_text)){
         log_ui_message("Current node text is not a valid id, cannot jump to underlying id");
@@ -3347,10 +3483,10 @@ void app_apply_event(AppState *app, UserOperation uo) {
 
         // modification
     case UO_ADD_CHILD_NODE:
-        handle_add_child_node(app);
+        // handle_add_child_node(app);
         break;
     case UO_ADD_CHILD_TO_TAIL:
-        handle_add_child_to_tail(app, app->ui->current_node);
+        handle_add_child_to_tail(app, app->current_node);
         break;
     case UO_ADD_SIBLING_ABOVE:
         handle_add_sibling_above(app);
@@ -3359,13 +3495,19 @@ void app_apply_event(AppState *app, UserOperation uo) {
         handle_add_sibling_below(app);
         break;
     case UO_EDIT_NODE:{
-        char tc;
-        handle_edit_node(app, app->ui->current_node, &tc);
-        operate_edit_history_record(app->operate, &(Event){.type = EVENT_UPDATE_TEXT, 
-            .node_id = tree_node_id(app->ui->current_node)});
-        if(tc == '\t'){
-            handle_add_child_to_tail(app, app->ui->current_node);
-        }
+        handle_edit_node(app);
+        break;
+    }
+    case UO_EDIT_NODE_FRONT:{
+        handle_edit_node_front(app);
+        break;
+    }
+    case UO_EDIT_NODE_END:{
+        handle_edit_node_end(app);
+        break;
+    }
+    case UO_DO_EDIT_NODE:{
+        handle_do_edit_node(app, app->current_node);
         break;
     }
     case UO_VI_EDIT_NODE:
@@ -3379,6 +3521,9 @@ void app_apply_event(AppState *app, UserOperation uo) {
         break;
     case UO_APPEND_NODE_TEXT:
         handle_append_node_text(app);
+        break;
+    case UO_DO_APPEND_NODE_TEXT:
+        handle_do_append_node_text(app);
         break;
     case UO_JOIN_SIBLING_AS_CHILD:
         handle_join_sibling_as_child(app);
@@ -3544,36 +3689,45 @@ void app_apply_event(AppState *app, UserOperation uo) {
     
         // view
     case UO_CENTER_VIEW:
-        ui_center_view_on_current(app->ui);
+        app->ui_center_view_on_current(app->ui_ctx);
         break;
     case UO_PLACE_LEFT:
-        ui_place_current_left(app->ui);
+        app->ui_place_current_left(app->ui_ctx);
         break;
     case UO_PLACE_RIGHT:
-        ui_place_current_right(app->ui);
+        app->ui_place_current_right(app->ui_ctx);
         break;
     case UO_VIEW_HALF_SCREEN_LEFT:
-        ui_view_move(app->ui, 0, - app->ui->width / 2);
+        app->ui_view_half_screen_left(app->ui_ctx);
         break;
     case UO_VIEW_HALF_SCREEN_RIGHT:
-        ui_view_move(app->ui, 0, app->ui->width / 2);
+        app->ui_view_half_screen_right(app->ui_ctx);
         break;
     case UO_VIEW_DOWN:
-        ui_view_down(app->ui, 1);
+        app->ui_view_down(app->ui_ctx, 1);
         break;
     case UO_VIEW_UP:
-        ui_view_up(app->ui, 1);
+        app->ui_view_up(app->ui_ctx, 1);
         break;
     case UO_NEXT_PAGE:
-        ui_view_next_page(app->ui);
+        app->ui_view_next_page(app->ui_ctx);
         break;
     case UO_PREV_PAGE:
-        ui_view_prev_page(app->ui);
+        app->ui_view_prev_page(app->ui_ctx);
+        break;
+    case UO_NEXT_HALF_PAGE:
+        app->ui_view_next_half_page(app->ui_ctx);
+        break;
+    case UO_PREV_HALF_PAGE:
+        app->ui_view_prev_half_page(app->ui_ctx);
         break;
 
         // mode switch
     case UO_COMMAND_MODE:
         handle_command_mode(app);
+        break;
+    case UO_DO_COMMAND:
+        handle_do_command(app);
         break;
     case UO_SHELL_ABOVE:
         handle_shell_above(app);
@@ -3582,8 +3736,14 @@ void app_apply_event(AppState *app, UserOperation uo) {
     case UO_SEARCH:
         handle_search(app);
         break;
+    case UO_DO_SEARCH:
+        handle_do_search(app, uo);
+        break;
     case UO_SEARCH_BACKWARD:
         handle_search_backward(app);
+        break;
+    case UO_DO_SEARCH_BACKWARD:
+        handle_do_search_backward(app);
         break;
     case UO_SEARCH_NEXT:
         handle_search_next(app);
@@ -3629,7 +3789,7 @@ void app_apply_event(AppState *app, UserOperation uo) {
         handle_prev_task(app);
         break;
     case UO_AS_CURRENT_TASK:
-        handle_as_current_task(app, app->ui->current_node);
+        handle_as_current_task(app, app->current_node);
         break;
 
     // external resources
@@ -3642,7 +3802,7 @@ void app_apply_event(AppState *app, UserOperation uo) {
         if(app->connect && !app->connect->pause && !zoomed){
             handle_send_command(app);
         }else{
-            ui_info_set_message(app->ui, "Cannot send command: %s", app->connect == NULL ? "no active connection" : (app->connect->pause ? "connection is paused" : "tmux pane is zoomed"));
+            app_ui_info_set_message(app, "Cannot send command: %s", app->connect == NULL ? "no active connection" : (app->connect->pause ? "connection is paused" : "tmux pane is zoomed"));
         }
         break;
     }
@@ -3659,4 +3819,195 @@ void app_apply_event(AppState *app, UserOperation uo) {
         log_warn("Unhandled UserOperation type: %d", uo.type);
         break;
     }
+}
+
+static void enqueue_uo(AppState *app, UserOperation uo) {
+    queue_enqueue(app->input_state->uo_queue, uo_create(uo));
+}
+
+void app_state_input_queue_add_key(AppState *app, char key){
+    switch(app->input_state->type){
+        case INPUT_STATE_DEFAULT:
+            switch(key){
+                case 'h': 
+                        enqueue_uo(app, (UserOperation){ .type = UO_MOVE_FOCUS_LEFT });
+                        break;
+                case 'j':
+                        enqueue_uo(app, (UserOperation){ .type = UO_MOVE_FOCUS_DOWN });
+                        break;
+                case 'k':
+                        enqueue_uo(app, (UserOperation){ .type = UO_MOVE_FOCUS_UP });
+                        break;
+                case 'l':
+                        enqueue_uo(app, (UserOperation){ .type = UO_MOVE_FOCUS_RIGHT });
+                        break;
+                case 'o':
+                        enqueue_uo(app, (UserOperation){ .type = UO_ADD_SIBLING_BELOW });
+                        break;
+                case 'A':
+                        enqueue_uo(app, (UserOperation){ .type = UO_ADD_CHILD_TO_TAIL });
+                        break;
+            }
+            break;
+        case INPUT_STATE_PREFIX:
+            break;
+        default:{
+            break;
+        }
+    }
+}
+
+void app_state_update(AppState *app) {
+    UserOperation *uo;
+    while((uo = queue_dequeue(app->input_state->uo_queue)) != NULL){
+        app_apply_event(app, *uo);
+        uo_destroy(uo);
+    }
+}
+
+TreeNode ui_last_visible_child(AppState *app, TreeNode parent) {
+  if (tree_node_is_null(parent))
+    return parent;
+  TreeNode child = ui_first_visible_child(app, parent);
+  TreeNode last_visible = (TreeNode){.kind = TREE_NODE_NULL};
+  while (!tree_node_is_null(child)) {
+    last_visible = child;
+    child = ui_next_visible_sibling(app, child);
+  }
+  return last_visible;
+}
+TreeNode ui_parent_level_next_visible_sibling(AppState *ui, TreeNode parent) {
+    int depth = 0;
+    bool from_child = false;
+    TreeNode next_sibling = ui_next_visible_sibling(ui, parent);
+    TreeNode child = ui_first_visible_child(ui, next_sibling);
+    if(!tree_node_is_null(next_sibling) && !tree_node_is_null(child)){
+        goto found;
+    }else{
+        TreeNode sibling = ui_next_visible_sibling(ui, parent);
+        if(tree_node_is_null(sibling)){
+            parent = tree_node_parent(ui->tree_overlay, parent);
+            depth--;
+            from_child = true;
+        }else{
+            parent = sibling;
+            from_child = false;
+        }
+    }
+    while(!tree_node_is_null(parent)){
+        if(depth == 0){
+            TreeNode child = ui_first_visible_child(ui, parent);
+            if(tree_node_is_null(child)){
+                TreeNode sibling = ui_next_visible_sibling(ui, parent);
+                if(tree_node_is_null(sibling)){
+                    parent = tree_node_parent(ui->tree_overlay, parent);
+                    depth--;
+                    from_child = true;
+                    continue;
+                }else{
+                    parent = sibling;
+                    from_child = false;
+                    continue;
+                }
+            }else{
+                next_sibling = parent;
+                goto found;
+            }
+        }else {
+            assert(depth < 0);
+            if(from_child){
+                // if coming from child, try next sibling
+                TreeNode sibling = ui_next_visible_sibling(ui, parent);
+                if(tree_node_is_null(sibling)){
+                    // no next sibling, go to parent
+                    parent = tree_node_parent(ui->tree_overlay, parent);
+                    depth--;
+                    from_child = true;
+                    continue;
+                }else{
+                    // found next sibling, go to it
+                    parent = sibling;
+                    from_child = false;
+                    continue;
+                }
+            }else{
+                // explore child first
+                TreeNode child = ui_first_visible_child(ui, parent);
+                if(tree_node_is_null(child)){
+                    TreeNode sibling = ui_next_visible_sibling(ui, parent);
+                    if(tree_node_is_null(sibling)){
+                        parent = tree_node_parent(ui->tree_overlay, parent);
+                        depth--;
+                        from_child = true;
+                        continue;
+                    }else{
+                        parent = sibling;
+                        from_child = false;
+                        continue;
+                    }
+                }else{
+                    // if has child, go to child first
+                    parent = child;
+                    depth++;
+                    from_child = false;
+                    continue;
+                }
+            }
+        }
+    }
+
+found:
+    return next_sibling;
+}
+void ui_move_focus_last_child(AppState *ui) {
+    TreeNode current = ui->current_node;
+    TreeNode last_child = ui_last_visible_child(ui, current);
+    if(!tree_node_is_null(last_child)){
+        ui->current_node = last_child;
+    }
+}
+
+void ui_move_focus_down(AppState *ui) {
+    TreeNode current = ui->current_node;
+    log_debug("[ui_move_focus_down] current id=%lu, kind=%d", tree_node_id(current), current.kind);
+    TreeNode next = ui_next_visible_sibling(ui, current);
+    log_debug("[ui_move_focus_down] next id=%lu, kind=%d", tree_node_id(next), next.kind);
+    if (!tree_node_is_null(next)) {
+        ui->current_node = next;
+    } 
+}
+void ui_move_focus_up(AppState *ui) {
+    TreeNode current = ui->current_node;
+    log_debug("[ui_move_focus_up] current id=%lu, kind=%d", tree_node_id(current), current.kind);
+    TreeNode prev = ui_previous_visible_sibling(ui, current);
+    log_debug("[ui_move_focus_up] prev id=%lu, kind=%d", tree_node_id(prev), prev.kind);
+    if (!tree_node_is_null(prev)) {
+        ui->current_node = prev;
+    } 
+}
+
+TreeNode ui_previous_visible_sibling(AppState *ui, TreeNode n) {
+    if (tree_node_is_null(n)) return n;
+    TreeOverlay *ov = ui->tree_overlay;
+    TreeNode prev = tree_node_prev_sibling(ov, n);
+    if(!ui->global_enable_hide){
+        return prev;
+    }
+    while (!tree_node_is_null(prev)) {
+        if (!tree_node_hidden(prev)) {
+            return prev;
+        }
+        prev = tree_node_prev_sibling(ov, prev);
+    }
+    return (TreeNode){ .kind = TREE_NODE_NULL };
+}
+void ui_message_fun(void *uc, const char *msg, va_list args){
+    AppState *app = (AppState *)uc;
+    char formatted_msg[1024];
+    vsnprintf(formatted_msg, sizeof(formatted_msg), msg, args);
+    if(app->info_message){
+        free(app->info_message);
+        app->info_message = NULL;
+    }
+    app->info_message = strdup(formatted_msg);
 }

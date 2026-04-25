@@ -21,19 +21,23 @@ CORE_SRCS := \
 	src/utils/crc.c \
 	src/utils/radix_tree.c \
 	src/ui/tty.c \
+	src/ui/input_state.c \
 	src/tree/tree_view.c \
 	src/tree/tree_overlay.c \
 	src/tree/tree_storage.c \
-	src/layout/mindmap_layout.c
-
-# UI and application sources
-APP_SRCS := \
+	src/layout/mindmap_layout.c \
 	src/ui/ui.c \
 	src/command/command.c \
 	src/operate/operate.c \
 	src/connect/connect.c \
 	src/app/app.c \
+
+# UI and application sources
+APP_SRCS := \
 	src/main.c
+
+MACOS_SOURCES := \
+	src/macOS/main.m
 
 # Object files
 CORE_OBJS := $(CORE_SRCS:.c=.o)
@@ -50,6 +54,11 @@ $(TARGET): $(CORE_OBJS) $(APP_OBJS)
 	mkdir -p bin
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 	@echo "✓ compilation success: $(TARGET)"
+
+bin/mac_um: $(MACOS_SOURCES) $(CORE_OBJS)
+	mkdir -p bin
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS) -framework Cocoa -framework QuartzCore
+	@echo "✓ compilation success: $@"
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@

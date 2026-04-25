@@ -7,6 +7,7 @@
 
 #include "mindmap_layout.h"
 #include "../utils/logging.h"
+#include "../app/app.h"
 #include "event/event.h"
 #include "event/event_types.h"
 
@@ -26,7 +27,7 @@ static const char* display_text(TreeNode node) {
         return tree_node_text(node);
     }
 }
-static int display_width(TreeNode node) {
+static double display_width(TreeNode node) {
     const char *str = display_text(node);
 
     if (!str) return 0;
@@ -71,21 +72,9 @@ static void mind_node_width(UiContext *ctx, TreeOverlay *ov, TreeNode n, int *ou
     *out_w = display_width(n) + 1; // plus link column
 }
 
-void mind_node_height(UiContext *ctx, TreeOverlay *ov, TreeNode n, int *out_h) {
-    if (tree_node_is_null(n)) {
-        *out_h = 0;
-        return;
-    }
-    if (tree_node_collapsed(n)) {// collapsed n->layout_height stores the non-collapsed height, not 1;
-                                // layout layer needs to handle collapsed nodes specially
-        *out_h = 1;
-        return;
-    }
 
-    *out_h = tree_node_layout_height(ov, n);
-}
-
-void mind_node_layout_origin(UiContext *ctx, TreeOverlay *ov, TreeNode n, int *out_x, int *out_y) {
+void mind_node_layout_origin(TreeOverlay *ov, TreeNode n, double *out_x, int *out_y, double (*display_width_func)(TreeNode n),
+    double link_width) {
     TreeNode parent = tree_node_parent(ov, n);
     if (tree_node_is_null(parent)) {
         *out_x = 0;
@@ -93,17 +82,17 @@ void mind_node_layout_origin(UiContext *ctx, TreeOverlay *ov, TreeNode n, int *o
         return;
     }
 
-    int parent_x = 0, parent_y = 0;
-    mind_node_layout_origin(ctx, ov, parent, &parent_x, &parent_y);
+    double parent_x = 0;
+    int parent_y = 0;
+    mind_node_layout_origin(ov, parent, &parent_x, &parent_y, display_width_func, link_width);
 
-    int x = parent_x + display_width(parent) + link_width; // plus link column
+    double x = parent_x + display_width_func(parent) + link_width; // plus link column
+
     int y = parent_y;
 
     for (TreeNode child = tree_node_first_child(ov, parent); !tree_node_is_null(child); child = tree_node_next_sibling(ov, child)) {
         if (tree_node_id(child) == tree_node_id(n)) break;
-        int ch = 0;
-        mind_node_height(ctx, ov, child, &ch);
-        y += ch;
+        y += mind_node_height(ov, child);
     }
 
     *out_x = x;
@@ -112,9 +101,11 @@ void mind_node_layout_origin(UiContext *ctx, TreeOverlay *ov, TreeNode n, int *o
 
 void mind_node_layout_wh(UiContext *ctx, TreeOverlay *ov, TreeNode n,
                                 int *out_x, int *out_y, int *out_w, int *out_h) {
-    mind_node_layout_origin(ctx, ov, n, out_x, out_y);
+    double double_out_x;
+    mind_node_layout_origin(ov, n, &double_out_x, out_y, display_width, link_width);
+    *out_x = double_out_x;
     mind_node_width(ctx, ov, n, out_w);
-    mind_node_height(ctx, ov, n, out_h);
+    *out_h = mind_node_height(ov, n);
 }
 
 static void render_link_vertical(int x, int y_start, int y_end) {
@@ -228,7 +219,8 @@ static const char *utf8_skip_cols(const char *s, int *skip_cols) {
 
 static bool mindmap_node_should_hightlight(UiContext *ctx, TreeNode n) {
     uint64_t node_id = tree_node_id(n);
-    TreeNode parent = ctx->current_node;
+    AppState *app = ctx->app;
+    TreeNode parent = app->current_node;
     while(!tree_node_is_null(parent)){
         if(tree_node_id(parent) == node_id){
             return true;
@@ -239,7 +231,8 @@ static bool mindmap_node_should_hightlight(UiContext *ctx, TreeNode n) {
 }
 
 static bool is_current_node(UiContext *ctx, TreeNode n){
-    return tree_node_id(n) == tree_node_id(ctx->current_node);
+    AppState *app = ctx->app;
+    return tree_node_id(n) == tree_node_id(app->current_node);
 }
 
 /**
@@ -248,13 +241,15 @@ static bool is_current_node(UiContext *ctx, TreeNode n){
 static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int origin_y, int parent_text_render_y,
     int position
 ) {
+    AppState *app = ctx->app;
+
     int view_x = ctx->view_x;
     int view_y = ctx->view_y;
     int view_w = ctx->width;
     int view_h = ctx->height;
 
     int node_x = 0, node_y = 0, node_w = 0, node_h = 0;
-    mind_node_height(ctx, ctx->overlay, n, &node_h);
+    node_h = mind_node_height(ctx->overlay, n);
     mind_node_width(ctx, ctx->overlay, n, &node_w);
     node_x = origin_x;
     node_y = origin_y;
@@ -288,7 +283,7 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
         render_text = cut_utf8_text_to_width(display_str, avail_w);
     }
 
-    bool is_current = (tree_node_id(n) == tree_node_id(ctx->current_node));
+    bool is_current = (tree_node_id(n) == tree_node_id(app->current_node));
     if(text_render_x >= 0){
         bool should_highlight = mindmap_node_should_hightlight(ctx, n);
         // do render text
@@ -365,8 +360,8 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
     // render link
     uint64_t node_id = tree_node_id(n);
     TreeNode parent = tree_node_parent(ctx->overlay, n);
-    TreeNode top_sibling = ui_first_visible_child(ctx, parent);
-    TreeNode bottom_sibling = ui_last_visible_child(ctx, parent);
+    TreeNode top_sibling = ui_first_visible_child(app, parent);
+    TreeNode bottom_sibling = ui_last_visible_child(app, parent);
     bool is_first_child = node_id == tree_node_id(top_sibling);
     bool is_last_child = node_id == tree_node_id(bottom_sibling);
     int link_x = node_render_x - link_width + 1;
@@ -375,13 +370,13 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
     // show jump mark
     if(!tree_node_is_null(parent) && link_x >=0 && link_x < view_w){
         const int mark_page_size = 26 * 26; // 676
-        if(ctx->mark_and_show_visible_nodes && ctx->mark >= mark_page_size){
-            ctx->mark_and_show_visible_nodes = false;
+        if(app->mark_and_show_visible_nodes && ctx->mark >= mark_page_size){
+            app->mark_and_show_visible_nodes = false;
         }
-        if(ctx->mark_and_show_visible_nodes){
+        if(app->mark_and_show_visible_nodes){
             if(0 <= ctx->mark && ctx->mark < mark_page_size){
                 // do mark
-                ctx->node_marks[ctx->mark] = node_id;
+                app->node_marks[ctx->mark] = node_id;
                 // show position
                 char mark1 = 'a' + (ctx->mark / 26);
                 char mark2 = 'a' + (ctx->mark % 26);
@@ -410,7 +405,7 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
         } else if(is_first_child){
             // first child, draw ┌
             if(link_x >=0 && link_y >=0 && link_y < view_h){
-                TreeNode sibling = ui_next_visible_sibling(ctx, n);
+                TreeNode sibling = ui_next_visible_sibling(app, n);
                 if(tree_node_is_null(sibling)){
                     // only child, draw ─
                     printf("\033[%d;%dH─", link_y + 1, link_x + 1);
@@ -476,31 +471,30 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
     int child_start_y = node_y;
 
     int child_position = 0;
-    for (TreeNode child = ui_first_visible_child(ctx, n);
+    for (TreeNode child = ui_first_visible_child(app, n);
         !tree_node_is_null(child);
-        child = ui_next_visible_sibling(ctx, child)
+        child = ui_next_visible_sibling(app, child)
     ) {
         int pos = -1;
-        if(ctx->show_child_position && is_current_node(ctx, n)){
+        if(app->show_child_position && is_current_node(ctx, n)){
             pos = child_position;
         }
         mindmap_render_node(ctx, child, child_start_x, child_start_y, text_render_y, pos);
-        int ch = 0;
-        mind_node_height(ctx, ctx->overlay, child, &ch);
-        child_start_y += ch;
+        child_start_y += mind_node_height(ctx->overlay, child);
         child_position++;
     }
     
 }
 
 void mindmap_layout_and_render(UiContext *ctx) {
+    AppState *app = ctx->app;
 
-    if(ctx->fix_view){
-        ctx->fix_view = false;
+    if(app->fix_view){
+        app->fix_view = false;
     }else{
         log_debug("tty size: width=%d, height=%d", ctx->width, ctx->height);
         int cx = 0, cy = 0, cw = 0, ch = 0;
-        mind_node_layout_wh(ctx, ctx->overlay, ctx->current_node, &cx, &cy, &cw, &ch);
+        mind_node_layout_wh(ctx, ctx->overlay, app->current_node, &cx, &cy, &cw, &ch);
         // int current_text_y = cy + ch / 2;
         int64_t delta_top = cy - ctx->view_y;
         int64_t delta_bottom = (cy + ch) - (ctx->view_y + ctx->height);
@@ -520,8 +514,8 @@ void mindmap_layout_and_render(UiContext *ctx) {
         if (ctx->view_x > cx - 2) // text is on the left side of the view
             ctx->view_x = cx - 2;
         
-        if(ctx->show_child_position){
-            TreeNode child = ui_first_visible_child(ctx, ctx->current_node);
+        if(app->show_child_position){
+            TreeNode child = ui_first_visible_child(app, app->current_node);
             mind_node_layout_wh(ctx, ctx->overlay, child, &cx, &cy, &cw, &ch);
             if(ctx->view_x < cx + cw - ctx->width + 2){ // text exceeds view right
                 ctx->view_x = cx + cw - ctx->width + 2; 

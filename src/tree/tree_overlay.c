@@ -1463,3 +1463,13 @@ int tree_overlay_save(TreeOverlay *ov, const char *path){
     free(serialized_mem_base);
     return 0;
 }
+bool is_tree_node_ancestor(TreeOverlay *ov, TreeNode ancestor, TreeNode child){
+    TreeNode curr = child;
+    while(!tree_node_is_null(curr)){
+        if(tree_node_id(curr) == tree_node_id(ancestor)){
+            return true;
+        }
+        curr = tree_node_parent(ov, curr);
+    }
+    return false;
+}

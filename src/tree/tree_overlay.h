@@ -149,9 +149,11 @@ void tree_node_set_next_sibling(TreeOverlay *ov, TreeNode *n, TreeNode next_sibl
 void tree_node_set_collapse(TreeOverlay *ov, TreeNode *n, bool collapsed);
 void tree_node_set_hidden(TreeOverlay *ov, TreeNode *n, bool hidden);
 void tree_node_set_layout_height(TreeOverlay *ov, TreeNode *n, uint64_t height);
+void tree_node_set_text(TreeOverlay *ov, TreeNode *n, const char *new_text);
 
 // relationships
 bool tree_node_has_parent(TreeOverlay *ov, TreeNode n);
+bool is_tree_node_ancestor(TreeOverlay *ov, TreeNode ancestor, TreeNode child);
 
 // ===== Mutation API (COW + edit) =====
 void overlay_materialize(TreeOverlay *ov, TreeNode *node);

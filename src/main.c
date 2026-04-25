@@ -20,6 +20,21 @@ void usage(const char *prog_name) {
     printf("  --help, -h         Show this help message\n");
 }
 
+void loop(AppState *app, UiContext *ui) {
+    ui_adapter_enable_raw_mode();
+    
+    int i = 0;
+    ui_render(ui);
+    while (app->running) {
+        log_debug("[app_run_interactive] ------------- New Loop Iteration -----------%d", i++);
+        UserOperation uo = ui_poll_user_input(ui);
+        app_apply_event(app, uo);
+        ui_render(ui);
+    }
+    
+    ui_adapter_disable_raw_mode();
+}
+
 int main(int argc, char *argv[]) {
     // to support UTF-8 output in terminal
     setlocale(LC_ALL, "");
@@ -75,21 +90,42 @@ int main(int argc, char *argv[]) {
     }
 
     // app configuration
-    AppState* app_state = app_init(db_file);
+    AppState* app = app_init(db_file);
+    // initialize UI context
+    int width, height;
+    ui_adapter_get_terminal_size(&width, &height);
+    UiContext *ui = ui_context_create(width, height);
+    ui->app = app;
+    ui->overlay = app->tree_overlay;
+    log_register_ui_message_fun(ui_message_fun, ui);
+    app->ui_ctx = ui;
+    app->ui_center_view_on_current = ui_center_view_on_current;
+    app->ui_place_current_left = ui_place_current_left;
+    app->ui_place_current_right = ui_place_current_right;
+    app->ui_view_move = ui_view_move;
+    app->ui_view_down = ui_view_down;
+    app->ui_view_up = ui_view_up;
+    app->ui_view_next_page = ui_view_next_page;
+    app->ui_view_prev_page = ui_view_prev_page;
+    app->ui_reset_layout = ui_reset_layout;
+    app->ui_render = ui_render;
+    app->ui_get_search_query = ui_get_search_query;
+    app->ui_get_search_backward_query = ui_get_search_backward_query;
+    
 
     // config wal
     if (disable_wal_option) {
         log_debug("WAL disabled by command line option");
         disable_wal = 1;
-        app_state->wal->sync_count_interval = 0;
-        app_state->wal->sync_time_interval = 0;
+        app->wal->sync_count_interval = 0;
+        app->wal->sync_time_interval = 0;
     } else {
-        app_state->wal->sync_count_interval = 1; // sync every record
-        app_state->wal->sync_time_interval = 0; // disable time interval
+        app->wal->sync_count_interval = 1; // sync every record
+        app->wal->sync_time_interval = 0; // disable time interval
     }
 
-    app_run(app_state);
-    app_shutdown(app_state);
+    loop(app, ui);
+    app_shutdown(app);
 
 
     return 0;

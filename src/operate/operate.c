@@ -93,14 +93,16 @@ int operate_commit_event(Operate *operate, Event *e) {
 
 }
 
-int operate_fold_node(Operate *operate, TreeNode node){
+int operate_fold_node(Operate *operate, TreeNode *node){
     if (!operate) return -1;
-    Event *event = event_create_collapse_node(tree_node_id(node));
+    uint64_t node_id = tree_node_id(*node);
+    Event *event = event_create_collapse_node(node_id);
     int r = operate_commit_event(operate, event);
     if (r != 0) {
         log_warn("Fold/unfold operation failed");
         return -1;
     }
+    *node = tree_find_by_id(operate->overlay, node_id);
     return 0;
 }
 
@@ -296,7 +298,7 @@ int operate_import_mindmap_from_txt(Operate *operate, const char *filepath){
 
     char line[4096];
     Stack *node_stack = stack_create(1024);
-    TreeNode root = operate->ui->current_node;
+    TreeNode root = operate->app->current_node;
     if(root.kind == TREE_NODE_DISK){
         overlay_materialize(operate->overlay, &root);
     }
@@ -407,7 +409,7 @@ int operate_export_mindmap_to_txt(Operate *operate, const char *filepath){
     ExportContext e_ctx = {
         .file = file
     };
-    TreeNode root = operate->ui->current_node;
+    TreeNode root = operate->app->current_node;
     tree_traverse_with_depth(operate->overlay, root, 0, export_visitor, &e_ctx, false);
 
     fclose(file);
@@ -982,7 +984,7 @@ int operate_ask_ai(Operate *operate, TreeNode node, enum query_scope scope){
             ExportContext e_ctx = {
                 .file = f
             };
-            TreeNode root = operate->ui->current_node;
+            TreeNode root = operate->app->current_node;
             tree_traverse_with_depth(operate->overlay, root, 0, export_visitor, &e_ctx, true);
             fclose(f);
             snprintf(message.mtext, sizeof(message.mtext), "%s", mem);

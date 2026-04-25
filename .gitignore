@@ -11,3 +11,5 @@ bin/
 universe-mindmap
 .clangd
 tests/*_test
+.dSYM/
+tmp

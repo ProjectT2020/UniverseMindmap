@@ -29,6 +29,9 @@ Queue* create_queue(int capacity){
     q->items = (void **)malloc(sizeof(void *) * capacity);
     return q;
 }
+Queue* queue_create(int capacity){
+    return create_queue(capacity);
+}
 
 void queue_destroy(Queue *q){
     if(q){

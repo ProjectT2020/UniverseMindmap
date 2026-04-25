@@ -6,7 +6,9 @@
 #include "operate_type.h"
 #include "../utils/stack.h"
 #include "../event/event.h"
-#include "ui/ui.h"
+// #include "../app/app.h"
+
+typedef struct AppState AppState;
 
 typedef enum {
     SEARCH_DIRECTION_FORWARD = 0,
@@ -19,8 +21,8 @@ typedef enum {
 } OperationMode;
 
 typedef struct {
+    AppState *app; // weak reference
     TreeOverlay *overlay;
-    UiContext *ui;
     Wal *wal;
     Stack *undo_stack;
     Stack *redo_stack;
@@ -72,7 +74,7 @@ int operate_edit_node(Operate *operate, TreeNode node);
 int operate_reduce_folding(Operate *operate, TreeNode current, int fold_level);
 int operate_fold_more(Operate *operate, TreeNode current, int fold_level);
 int operate_expand_all_descendants(Operate *operate, TreeNode current);
-int operate_fold_node(Operate *operate, TreeNode node);
+int operate_fold_node(Operate *operate, TreeNode *node);
 
 // external
 int operate_ask_ai(Operate *operate, TreeNode node, enum query_scope scope);
