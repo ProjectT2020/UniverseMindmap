@@ -13,3 +13,4 @@ universe-mindmap
 tests/*_test
 .dSYM/
 tmp
+UniverseMindmap.app

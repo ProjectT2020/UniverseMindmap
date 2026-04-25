@@ -1,6 +1,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "../src/wal/wal.h"
 #include "../src/operate/operate.h"
@@ -188,13 +190,10 @@ static void test_gd_hierarchy_filter_skips_dot_metadata(void) {
     Operate operate = {0};
     operate.overlay = ov;
 
-    UiContext ui = {0};
-    ui.current_node = current;
-
     AppState app = {0};
     app.tree_overlay = ov;
     app.operate = &operate;
-    app.ui = &ui;
+    app.current_node = current;
     app.jump_back_stack = stack_create(32);
     app.jump_forward_stack = stack_create(32);
 
@@ -208,8 +207,8 @@ static void test_gd_hierarchy_filter_skips_dot_metadata(void) {
     );
 
     assert(r == 0);
-    assert(tree_node_id(app.ui->current_node) == tree_node_id(good));
-    assert(tree_node_id(app.ui->current_node) != tree_node_id(bad));
+    assert(tree_node_id(app.current_node) == tree_node_id(good));
+    assert(tree_node_id(app.current_node) != tree_node_id(bad));
 
     stack_destroy(app.jump_back_stack);
     stack_destroy(app.jump_forward_stack);
@@ -238,8 +237,8 @@ static void test_expand_all_descendants_skips_meta_subtree(void) {
     assert(!tree_node_is_null(meta_nested));
     assert(!tree_node_is_null(grandchild));
 
-    assert(operate_fold_node(operate, meta) == 0);
-    assert(operate_fold_node(operate, child) == 0);
+    assert(operate_fold_node(operate, &meta) == 0);
+    assert(operate_fold_node(operate, &child) == 0);
     assert(tree_node_is_collapsed(meta));
     assert(tree_node_is_collapsed(child));
 
@@ -248,6 +247,50 @@ static void test_expand_all_descendants_skips_meta_subtree(void) {
     assert(tree_node_is_collapsed(meta));
     assert(!tree_node_is_collapsed(child));
 
+    operate_destroy(operate);
+    wal_close(wal);
+}
+
+static void test_lowercase_a_appends_text_in_headless_flow(void) {
+    TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_append_headless.umt");
+    assert(ov != NULL);
+
+    Wal *wal = wal_open("/tmp/um_append_headless.wal");
+    assert(wal != NULL);
+
+    Operate *operate = operate_create(wal, ov);
+    assert(operate != NULL);
+
+    AppState app = {0};
+    app.tree_overlay = ov;
+    app.wal = wal;
+    app.operate = operate;
+    app.input_state = input_state_create();
+    assert(app.input_state != NULL);
+
+    TreeNode root = ov->root;
+    TreeNode current = tree_add_first_child(ov, &root, "base");
+    assert(!tree_node_is_null(current));
+    app.current_node = current;
+
+    UserOperation uo = input_convert(app.input_state, 'a', 0, NULL, false);
+    assert(uo.type == UO_EDIT_NODE_END);
+
+    app_apply_event(&app, uo);
+    assert(app.input_state->type == INPUT_STATE_TYPE_GET_NAME_INSERT_END);
+    assert(app.node_text != NULL);
+    assert(strcmp(app.node_text, "base") == 0);
+
+    free(app.node_text);
+    app.node_text = strdup("base-suffix");
+    assert(app.node_text != NULL);
+
+    app_apply_event(&app, (UserOperation){.type = UO_DO_EDIT_NODE});
+
+    assert(strcmp(tree_node_text(app.current_node), "base-suffix") == 0);
+
+    free(app.node_text);
+    app.node_text = NULL;
     operate_destroy(operate);
     wal_close(wal);
 }
@@ -262,6 +305,7 @@ int main(void) {
     test_bfs_search_filter_blocks_branch();
     test_gd_hierarchy_filter_skips_dot_metadata();
     test_expand_all_descendants_skips_meta_subtree();
+    test_lowercase_a_appends_text_in_headless_flow();
 
     printf("[PASS] operate search tests\n");
     return 0;

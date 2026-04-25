@@ -187,7 +187,7 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
             break;
         }
         case 'a':
-            input.type = UO_APPEND_NODE_TEXT;
+            input.type = UO_EDIT_NODE_END;
             break;
         case '\t': // TAB or ^I 
             if(ctx->last_input.type == UO_JUMP_BACK || ctx->last_input.type == UO_JUMP_FORWARD){
@@ -216,6 +216,9 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
             break;
         case 's':
             input.type = UO_EDIT_NODE;
+            break;
+        case 'i':
+            input.type = UO_EDIT_NODE_FRONT;
             break;
         case 'I':
             input.type = UO_INSERT_PARENT_LEFT;
@@ -616,19 +619,100 @@ static void ui_show_message(UiContext *ctx, const char *format, ...) {
     va_end(args);
 }
 
-char* edit_mode(UiContext *ctx, const char *prefix, int cursor_x, int cursor_y, char *out_terminated_character){
-    struct termios tty_mode_saved;
-    tty_edit_mode(&tty_mode_saved);
+static size_t clamp_cursor_bytes(const char *text, size_t cursor_bytes) {
+    size_t text_len = strlen(text);
+    if (cursor_bytes >= text_len) {
+        return text_len;
+    }
+
+    while (cursor_bytes > 0 && (((unsigned char)text[cursor_bytes]) & 0xC0) == 0x80) {
+        cursor_bytes--;
+    }
+    return cursor_bytes;
+}
+
+static int utf8_char_width_bytes(const char *s, size_t len) {
+    wchar_t wc;
+    if (len == 0) {
+        return 0;
+    }
+    mbtowc(&wc, s, len);
+    {
+        int w = wcwidth(wc);
+        return w > 0 ? w : 1;
+    }
+}
+
+static int utf8_display_width_bytes(const char *s, size_t byte_len) {
+    size_t i = 0;
+    int width = 0;
+    while (i < byte_len && s[i] != '\0') {
+        size_t char_len = (size_t)mblen(s + i, MB_CUR_MAX);
+        if (char_len == (size_t)-1 || char_len == (size_t)-2 || char_len == 0) {
+            char_len = 1;
+        }
+        if (i + char_len > byte_len) {
+            break;
+        }
+        width += utf8_char_width_bytes(s + i, char_len);
+        i += char_len;
+    }
+    return width;
+}
+
+static size_t utf8_next_char_end(const char *s, size_t cursor_bytes) {
+    size_t text_len = strlen(s);
+    if (cursor_bytes >= text_len) {
+        return text_len;
+    }
+
+    {
+        size_t char_len = (size_t)mblen(s + cursor_bytes, MB_CUR_MAX);
+        if (char_len == (size_t)-1 || char_len == (size_t)-2 || char_len == 0) {
+            char_len = 1;
+        }
+        if (cursor_bytes + char_len > text_len) {
+            return text_len;
+        }
+        return cursor_bytes + char_len;
+    }
+}
+
+static void edit_mode_render(
+    const char *prefix,
+    const char *text,
+    int cursor_x,
+    int cursor_y,
+    size_t cursor_bytes
+) {
+    int prefix_width = utf8_display_width_bytes(prefix ? prefix : "", strlen(prefix ? prefix : ""));
+    int text_width_to_cursor = utf8_display_width_bytes(text, cursor_bytes);
 
     set_cursor_position(cursor_x, cursor_y);
-    printf("%s", prefix ? prefix : "");
+    printf("%s%s\033[K", prefix ? prefix : "", text);
     fflush(stdout);
+    set_cursor_position(cursor_x + prefix_width + text_width_to_cursor, cursor_y);
+}
+
+char* edit_mode(
+    UiContext *ctx,
+    const char *prefix,
+    const char *initial_text,
+    size_t initial_cursor_bytes,
+    int cursor_x,
+    int cursor_y,
+    char *out_terminated_character
+){
+    struct termios tty_mode_saved;
+    tty_edit_mode(&tty_mode_saved);
     show_cursor();
     cursor_blink();
 
     #define MAX_WIDTH  1024
     static char new_name[MAX_WIDTH];
-    new_name[0] = 0;
+    snprintf(new_name, sizeof(new_name), "%s", initial_text ? initial_text : "");
+    size_t cursor_bytes = clamp_cursor_bytes(new_name, initial_cursor_bytes);
+    edit_mode_render(prefix, new_name, cursor_x, cursor_y, cursor_bytes);
     int c;
     bool in_paste = false;
     while(1) {
@@ -670,6 +754,18 @@ char* edit_mode(UiContext *ctx, const char *prefix, int cursor_x, int cursor_y, 
                     in_paste = false;
                     continue;
                 }
+                if(strcmp(buf, "D") == 0){
+                    if(cursor_bytes > 0){
+                        cursor_bytes = (size_t)utf8_prev_char_start(new_name, (int)cursor_bytes);
+                        edit_mode_render(prefix, new_name, cursor_x, cursor_y, cursor_bytes);
+                    }
+                    continue;
+                }
+                if(strcmp(buf, "C") == 0){
+                    cursor_bytes = utf8_next_char_end(new_name, cursor_bytes);
+                    edit_mode_render(prefix, new_name, cursor_x, cursor_y, cursor_bytes);
+                    continue;
+                }
             } // '['
             else {
                 // single ESC pressed?
@@ -688,28 +784,25 @@ char* edit_mode(UiContext *ctx, const char *prefix, int cursor_x, int cursor_y, 
             break; // end of input line
         }
         if(c == 127 || c == 8) { // backspace
-            if (new_name[0] != '\0') {
-                int w = utf8_last_char_width(new_name);
-                utf8_pop_last_char(new_name);
-                tty_erase_chars(w);
+            if (cursor_bytes > 0) {
+                size_t prev_start = (size_t)utf8_prev_char_start(new_name, (int)cursor_bytes);
+                memmove(new_name + prev_start, new_name + cursor_bytes, strlen(new_name + cursor_bytes) + 1);
+                cursor_bytes = prev_start;
+                edit_mode_render(prefix, new_name, cursor_x, cursor_y, cursor_bytes);
             }
             continue;
         } else if(c == 0x17){// Ctrl+W; delete last word
-            // delete trailing spaces
-            int len = (int)strlen(new_name);
-            while(len > 0 && new_name[len - 1] == ' '){
-                utf8_pop_last_char(new_name);
-                tty_erase_chars(1);
-                len--;
+            while(cursor_bytes > 0 && new_name[cursor_bytes - 1] == ' '){
+                size_t prev_start = (size_t)utf8_prev_char_start(new_name, (int)cursor_bytes);
+                memmove(new_name + prev_start, new_name + cursor_bytes, strlen(new_name + cursor_bytes) + 1);
+                cursor_bytes = prev_start;
             }
-            // delete last word
-            while(len > 0 && new_name[len - 1] != ' '){
-                int w = utf8_last_char_width(new_name);
-                utf8_pop_last_char(new_name);
-                tty_erase_chars(w);
-                // update len
-                len = (int)strlen(new_name);
+            while(cursor_bytes > 0 && new_name[cursor_bytes - 1] != ' '){
+                size_t prev_start = (size_t)utf8_prev_char_start(new_name, (int)cursor_bytes);
+                memmove(new_name + prev_start, new_name + cursor_bytes, strlen(new_name + cursor_bytes) + 1);
+                cursor_bytes = prev_start;
             }
+            edit_mode_render(prefix, new_name, cursor_x, cursor_y, cursor_bytes);
             continue;
         }
         else {
@@ -731,9 +824,10 @@ char* edit_mode(UiContext *ctx, const char *prefix, int cursor_x, int cursor_y, 
             }
             int cur_len = (int)strlen(new_name);
             if(cur_len + (int)mblen < MAX_WIDTH){
-                memcpy(new_name + cur_len, mb, mblen);
-                new_name[cur_len + mblen] = '\0';
-                write(STDOUT_FILENO, mb, mblen);
+                memmove(new_name + cursor_bytes + mblen, new_name + cursor_bytes, strlen(new_name + cursor_bytes) + 1);
+                memcpy(new_name + cursor_bytes, mb, mblen);
+                cursor_bytes += mblen;
+                edit_mode_render(prefix, new_name, cursor_x, cursor_y, cursor_bytes);
             }else{
                 log_info("edit_mode: input exceeded max length %d\n", MAX_WIDTH);
                 ui_show_message(ctx, "Input exceeded max length %d", MAX_WIDTH);
@@ -753,22 +847,53 @@ char* edit_mode(UiContext *ctx, const char *prefix, int cursor_x, int cursor_y, 
 
 char* ui_get_name(void *ui_ctx, char *terminated_character){
     UiContext *ctx = (UiContext *)ui_ctx;
+    const char *initial_text = "";
+    if(ctx != NULL && ctx->app != NULL && ctx->app->node_text != NULL){
+        initial_text = ctx->app->node_text;
+    }
 
     // edit in node position
-    char *name = edit_mode(ctx, "", ctx->current_text_x, ctx->current_text_y, terminated_character);
+    char *name = edit_mode(
+        ctx,
+        "",
+        initial_text,
+        strlen(initial_text),
+        ctx->current_text_x,
+        ctx->current_text_y,
+        terminated_character
+    );
     log_debug("ui_get_name: got name '%s'\n", name);
     return name;
 }
 
 char* ui_get_name_append(void *ui_ctx, const char *old_name, char *terminated_character){
     UiContext *ctx = (UiContext *)ui_ctx;
-    // edit in node position
-    char *appending = edit_mode(ctx, old_name, ctx->current_text_x, ctx->current_text_y, terminated_character);
-    static char new_name[4096];
-    snprintf(new_name, sizeof(new_name), "%s%s", old_name, appending);
-    log_debug("ui_get_name_append: got name '%s'\n", new_name);
-    free(appending);
-    return strdup(new_name);
+    char *name = edit_mode(
+        ctx,
+        "",
+        old_name,
+        strlen(old_name),
+        ctx->current_text_x,
+        ctx->current_text_y,
+        terminated_character
+    );
+    log_debug("ui_get_name_append: got name '%s'\n", name);
+    return name;
+}
+
+static char* ui_get_name_prepend(void *ui_ctx, const char *old_name, char *terminated_character){
+    UiContext *ctx = (UiContext *)ui_ctx;
+    char *name = edit_mode(
+        ctx,
+        "",
+        old_name,
+        0,
+        ctx->current_text_x,
+        ctx->current_text_y,
+        terminated_character
+    );
+    log_debug("ui_get_name_prepend: got name '%s'\n", name);
+    return name;
 }
 
 char* ui_get_command(void *ui_ctx){
@@ -777,7 +902,7 @@ char* ui_get_command(void *ui_ctx){
     int cursor_x = 0;
     int cursor_y = ctx ? ctx->height - 1 : 0;
     char terminated_character = 0;
-    char *command = edit_mode(ctx, ":", cursor_x, cursor_y, &terminated_character);
+    char *command = edit_mode(ctx, ":", "", 0, cursor_x, cursor_y, &terminated_character);
     log_debug("ui_get_command: got command '%s'\n", command);
     return command;
 }
@@ -789,7 +914,7 @@ char* ui_get_search_query(void *ui_ctx){
     int cursor_x = 0;
     int cursor_y = ctx ? ctx->height - 1 : 0;
     char terminated_character = 0;
-    char *query = edit_mode(ctx, "/", cursor_x, cursor_y, &terminated_character);
+    char *query = edit_mode(ctx, "/", "", 0, cursor_x, cursor_y, &terminated_character);
     log_debug("ui_get_search_query: got query '%s'\n", query);
     return query;
 }
@@ -800,7 +925,7 @@ char *ui_get_search_backward_query(void *ui_ctx){
     int cursor_x = 0;
     int cursor_y = ctx ? ctx->height - 1 : 0;
     char terminated_character = 0;
-    char *query = edit_mode(ctx, "?", cursor_x, cursor_y, &terminated_character);
+    char *query = edit_mode(ctx, "?", "", 0, cursor_x, cursor_y, &terminated_character);
     log_debug("ui_get_search_backward_query: got query '%s'\n", query);
     return query;
 }
@@ -936,13 +1061,20 @@ void ui_render(void *ui_ctx){
         app->command = ui_get_command(ui_ctx);
         return;
     }
-    if(input_state->type == INPUT_STATE_TYPE_GET_NAME){
-        if(app->node_text != NULL){
-            free(app->node_text);
-            app->node_text = NULL;
-        }   
+    if(input_state->type == INPUT_STATE_TYPE_GET_NAME
+        || input_state->type == INPUT_STATE_TYPE_GET_NAME_INSERT_FRONT
+        || input_state->type == INPUT_STATE_TYPE_GET_NAME_INSERT_END){
+        char *previous_node_text = app->node_text;
         char terminated_character = '\0';
-        app->node_text = ui_get_name(ui_ctx, &terminated_character);
+        if(input_state->type == INPUT_STATE_TYPE_GET_NAME_INSERT_FRONT){
+            const char *current_text = previous_node_text ? previous_node_text : "";
+            app->node_text = ui_get_name_prepend(ui_ctx, current_text, &terminated_character);
+        }else{
+            app->node_text = ui_get_name(ui_ctx, &terminated_character);
+        }
+        if(previous_node_text != NULL){
+            free(previous_node_text);
+        }
         if(terminated_character == '\e'){
             // user pressed ESC to cancel renaming
             free(app->node_text);

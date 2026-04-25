@@ -33,6 +33,7 @@ OPERATE_SEARCH_SRCS := test_operate_search.c \
 	../src/utils/hashtable_u64.c \
 	../src/utils/crc.c \
 	../src/utils/radix_tree.c \
+	../src/ui/input_state.c \
 	../src/ui/tty.c \
 	../src/tree/tree_view.c \
 	../src/tree/tree_overlay.c \

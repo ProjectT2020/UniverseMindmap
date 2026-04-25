@@ -30,6 +30,40 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
             } else {
                 return (UserOperation){.type = UO_NOP};
             }
+       case '\\':
+          {
+            if(input_state->prefix_count == 0){
+                input_state->prefix_count++;
+                input_state->key_buffer[0] = key;
+                return (UserOperation){.type = UO_NOP};
+            } else {
+                input_state->type = INPUT_STATE_DEFAULT;
+                input_state->prefix_count = 0;
+                input_state->key_buffer[1] = key;
+                if(strcmp(input_state->key_buffer, "ac") == 0){// as current
+                    return (UserOperation){.type = UO_AS_CURRENT_TASK};
+                } 
+                if(strcmp(input_state->key_buffer, "ft") == 0){// finish task
+                    return (UserOperation){.type = UO_FINISH_TASK};
+                }
+                if(strcmp(input_state->key_buffer, "cd") == 0){// current definition
+                    return (UserOperation){.type = UO_CURRENT_TASK_JUMP_DEFINITION};
+                }
+                if(strcmp(input_state->key_buffer, "gs") == 0){// go web search
+                    return (UserOperation){.type = UO_SEARCH_ENGINE};
+                }
+                return (UserOperation){.type = UO_NOP};
+            }
+          }
+    case 'd':
+          switch(key){
+              case 'd':
+                input_state->type = INPUT_STATE_DEFAULT;
+                return (UserOperation){.type = UO_CUT_SUBTREE};
+              default:
+                input_state->type = INPUT_STATE_DEFAULT;
+                return (UserOperation){.type = UO_NOP};
+          }
     case 'g':
       switch (key) {
       case 'g':
@@ -41,6 +75,9 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
       case 'd':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_JUMP_KEYWORD_DEFINITION};
+      case 'D':
+        input_state->type = INPUT_STATE_DEFAULT;
+        return (UserOperation){.type = UO_OPEN_RESOURCE_LINK};
       case 'j':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_MOVE_FOCUS_DOWN};
@@ -50,6 +87,9 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
       case ';':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_TO_EDIT_HISTORY};
+      case 'p':
+        input_state->type = INPUT_STATE_DEFAULT;
+        return (UserOperation){.type = UO_PASTE_AS_CHILD};
       default:
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_NOP};
@@ -81,6 +121,8 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
         return (UserOperation){.type = UO_MOVE_PARENT_PREV_SIBLING_BEGIN};
       case ']':
         return (UserOperation){.type = UO_MOVE_PARENT_PREV_SIBLING_END};
+      case 't':
+        return (UserOperation){.type = UO_PREV_TASK};
       default:
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_NOP};
@@ -94,6 +136,8 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
                   return (UserOperation){.type = UO_MOVE_PARENT_NEXT_SIBLING_END};
                 case '[':
                   return (UserOperation){.type = UO_MOVE_PARENT_NEXT_SIBLING_BEGIN};
+                case 't':
+                  return (UserOperation){.type = UO_NEXT_TASK};
                 default:
                   return (UserOperation){.type = UO_NOP};
             }
@@ -177,6 +221,7 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
     switch(key){
         case 'm':
         case '\'':
+        case 'd':
         case 'g':
         case 'z':
         case 'Z':
@@ -185,6 +230,13 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
             input_state->type = INPUT_STATE_PREFIX;
             input_state->prefix = key;
             return (UserOperation){.type = UO_NOP};
+        case '\\':
+            input_state->type = INPUT_STATE_PREFIX;
+            input_state->prefix = key;
+            input_state->prefix_count = 0;
+            return (UserOperation){.type = UO_NOP};
+        case 'D':
+            return (UserOperation){.type = UO_DELETE_SUBTREE};
         case 'J':
             return (UserOperation){.type = UO_JOIN_SIBLING_AS_CHILD};
         case 'G':
@@ -248,6 +300,8 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
           return (UserOperation){.type = UO_NEXT_PAGE};
         case 115: // home
           return (UserOperation){.type = UO_MOVE_FOCUS_HOME};
+        case 117: // delete
+          return (UserOperation){.type = UO_CUT_SUBTREE};
         default:
             break;
      }

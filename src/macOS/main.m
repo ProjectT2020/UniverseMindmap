@@ -3,8 +3,10 @@
 #include <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import <unistd.h>
+#import <libgen.h>
 #include <getopt.h>
 
+    
 #include "../app/app.h"
 #include "../layout/mindmap_layout.h"
 #include "../ui/ui.h"
@@ -132,8 +134,8 @@ replacementString:(NSString *)string
     || app_state->input_state->type == INPUT_STATE_TYPE_GET_NAME_INSERT_END){
         NSInteger oldLength = textView.string.length;
         NSInteger newLength = oldLength - range.length + string.length;
-        NSInteger originTextLenth = [NSString stringWithUTF8String:tree_node_text(app_state->current_node)].length;
-        BOOL lengthAdded = (newLength > originTextLenth);
+        // NSInteger originTextLenth = [NSString stringWithUTF8String:tree_node_text(app_state->current_node)].length;
+        BOOL lengthAdded = (newLength > oldLength);
         NSString *old = textView.string;
         NSString *newString = [old stringByReplacingCharactersInRange:range
                                  withString:string];
@@ -212,16 +214,6 @@ replacementString:(NSString *)string
         // _worldLayer.backgroundColor = [NSColor lightGrayColor].CGColor;
         _worldLayer.frame = self.bounds;
         [self.layer addSublayer:_worldLayer];
-
-        // _fpsLayer = [CATextLayer layer];
-        // _fpsLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor;
-        // _fpsLayer.fontSize = 14;
-        // _fpsLayer.alignmentMode = kCAAlignmentLeft;
-        // _fpsLayer.foregroundColor = [NSColor colorWithCalibratedWhite:0.08 alpha:1.0].CGColor;
-        // _fpsLayer.backgroundColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.88].CGColor;
-        // _fpsLayer.cornerRadius = 8;
-        // _fpsLayer.string = @"FPS --";
-        // [self.layer addSublayer:_fpsLayer];
 
         _infoLayer = [CATextLayer layer];
         _infoLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor;
@@ -486,7 +478,14 @@ replacementString:(NSString *)string
 
     // place cursor 
     switch(app_state->input_state->type){
-        case INPUT_STATE_TYPE_GET_NAME:
+        case INPUT_STATE_TYPE_GET_NAME:{
+            NSString *str = textView.string;
+            [textView setSelectedRange:NSMakeRange(str.length, 0)];
+            [textView scrollRangeToVisible:NSMakeRange(str.length, 0)];
+            textView.frame = NSMakeRect(self.currentNodeFrame.origin.x, self.currentNodeFrame.origin.y, 
+                default_text_points / 2.0, textView.frame.size.height);
+            break;
+        }
         case INPUT_STATE_TYPE_GET_NAME_INSERT_END:{
             NSString *str = textView.string;
             [textView setSelectedRange:NSMakeRange(str.length, 0)];
@@ -1016,6 +1015,15 @@ replacementString:(NSString *)string
         }];
         return;
     }
+    if(event.keyCode == 117){
+        UserOperation uo = input_convert(app_state->input_state, '\0', event.keyCode, NULL, NO);
+        app_apply_event(app_state, uo);
+        [self performWithoutImplicitAnimation:^{
+            [self render_mindmap];
+        }];
+        return;
+
+    }
 
     dont_adjust_doc_view_by_current = false;
 
@@ -1026,6 +1034,11 @@ replacementString:(NSString *)string
         [self performWithoutImplicitAnimation:^{
             [self render_mindmap];
         }];
+        return;
+    }
+    // F2
+    if(event.keyCode == 120){
+        [super keyDown:event];
         return;
     }
     // F12: toggle debug info
@@ -1063,7 +1076,7 @@ replacementString:(NSString *)string
                 || key == '[' || key == ']' 
                 || key == '#' || key == '$' || key == '%' || key == '^' || key == '&' || key == '*' || key == '(' || key == ')'
                 || key == '-' || key == '=' || key == ' '
-                || key == '\t' || key == ';'
+                || key == '\t' || key == ';' || key == '\\'
                 ){ 
                 UserOperation uo = input_convert(app_state->input_state, key, 0, NULL, NO);
                 app_apply_event(app_state, uo);
@@ -1073,7 +1086,11 @@ replacementString:(NSString *)string
                     dont_adjust_doc_view_by_current = false;
                 }
                 if(app_state->input_state->type == INPUT_STATE_PREFIX){
-                    self.buttomCommandTextView.string = [NSString stringWithFormat:@"Prefix: %c", key];
+                    self.buttomCommandTextView.string = [NSString stringWithFormat:@"Prefix: %c%.*s", 
+                        app_state->input_state->prefix,
+                        app_state->input_state->prefix_count,
+                        app_state->input_state->key_buffer];
+
                     self.buttomCommandTextView.backgroundColor = [NSColor blackColor];
                     self.buttomCommandTextView.textColor = [NSColor whiteColor];
                     self.buttomCommandTextView.hidden = NO;
@@ -1295,15 +1312,38 @@ int main(int argc, char *const*argv) {
 
 
     init_logging();
+    @autoreleasepool {
+        // 切换 cwd 到可执行文件所在目录
+        char path[1024];
+        uint32_t size = sizeof(path);
+        if (_NSGetExecutablePath(path, &size) == 0) {
+            chdir(dirname(path));
+        }
+    }
+    
+    // 现在的 cwd 就是 Contents/MacOS 了
+    char cwdbuf[1024];
+    getcwd(cwdbuf, sizeof(cwdbuf));
+    NSLog(@"New cwd = %s", cwdbuf);
 
-    const char *db_file = "universe-mindmap.umt";
-    app_state = app_init(db_file);
+    NSString *dbPath = [[NSBundle mainBundle] pathForResource:@"universe-mindmap" ofType:@"umt"];
+    if (!dbPath) {
+        dbPath = @"universe-mindmap.umt";
+    }
+    if(argc > 1 && argv[argc-1] != NULL && strstr(argv[argc-1], ".umt") != 0){
+        NSLog(@"Using db path from command line: %s", argv[argc-1]);
+        dbPath = [NSString stringWithUTF8String:argv[argc-1]];
+    }
+    app_state = app_init([dbPath UTF8String]);
+
+    // const char *db_file = "universe-mindmap.umt";
+    // app_state = app_init(db_file);
     if(app_state == NULL) {
-        logd( "Failed to initialize app state\n");
+        NSLog( @"Failed to initialize app state\n");
         return 1;
     }else{
-        logd( "App state initialized successfully\n");
-        logd( "Root node text: %s\n", tree_node_text(app_state->tree_overlay->root));
+        NSLog( @"App state initialized successfully\n");
+        NSLog( @"Root node text: %s\n", tree_node_text(app_state->tree_overlay->root));
     }
 
     @autoreleasepool {

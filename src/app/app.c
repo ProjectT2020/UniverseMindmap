@@ -595,10 +595,16 @@ static void handle_add_sibling_below(AppState *app) {
 
 void handle_edit_node(AppState *app){
     app->input_state->type = INPUT_STATE_TYPE_GET_NAME;
-    app->node_text = "";
+    if(app->node_text != NULL){
+        free(app->node_text);
+    }
+    app->node_text = strdup("");
 }
 void handle_edit_node_front(AppState *app){
     app->input_state->type = INPUT_STATE_TYPE_GET_NAME_INSERT_FRONT;
+    if(app->node_text != NULL){
+        free(app->node_text);
+    }
     const char *current_text = tree_node_text(app->current_node);
     size_t current_text_len = strlen(current_text);
     app->node_text = (char*)calloc(current_text_len + 1, sizeof(char));
@@ -606,6 +612,9 @@ void handle_edit_node_front(AppState *app){
 }
 void handle_edit_node_end(AppState *app){
     app->input_state->type = INPUT_STATE_TYPE_GET_NAME_INSERT_END;
+    if(app->node_text != NULL){
+        free(app->node_text);
+    }
     const char *current_text = tree_node_text(app->current_node);
     size_t current_text_len = strlen(current_text);
     app->node_text = (char*)calloc(current_text_len + 1, sizeof(char));
@@ -935,6 +944,20 @@ void handle_redo(AppState *app) {
 void handle_copy_subtree(AppState *app) {
     log_debug("[handle_copy_subtree] Copying current subtree to clipboard");
     TreeNode current = app->current_node;
+
+    // can't copy recycle bin and ancestors
+    TreeNode recycle_bin_node = app_metadata_key_node(app->operate, "recycle_bin");
+
+    // if is_cutting_recycle_bin_or_ancestors then return
+    TreeNode n = recycle_bin_node;
+    while(!tree_node_is_null(n)){
+        if(tree_node_id(n) == tree_node_id(current)){
+            log_debug("can't copy recycle bin and its ancestors, we use recycle bin for copy/paste");
+            return;
+        }
+        n = tree_node_parent(app->tree_overlay, n);
+    }
+
     int r = operate_copy_subtree(app->operate, current);
     if (r != 0) {
         log_warn("Copy subtree operation failed");
@@ -1171,6 +1194,16 @@ void handle_cut_subtree(AppState *app) {
     TreeNode old_next_sibling = tree_node_next_sibling(app->tree_overlay, current);
     TreeNode new_parent = app_metadata_key_node(app->operate, "recycle_bin");
     TreeNode new_next_sibling = tree_node_first_child(app->tree_overlay, new_parent);
+
+    // if is_cutting_recycle_bin_or_ancestors then return
+    TreeNode n = new_parent;
+    while(!tree_node_is_null(n)){
+        if(tree_node_id(n) == tree_node_id(current)){
+            log_debug("can't delete recycle bin it self");
+            return;
+        }
+        n = tree_node_parent(app->tree_overlay, n);
+    }
     Event *event = event_create_move_subtree(
         tree_node_id(current),
         tree_node_id(old_parent),

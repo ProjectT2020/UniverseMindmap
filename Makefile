@@ -55,10 +55,10 @@ $(TARGET): $(CORE_OBJS) $(APP_OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 	@echo "✓ compilation success: $(TARGET)"
 
-bin/mac_um: $(MACOS_SOURCES) $(CORE_OBJS)
-	mkdir -p bin
-	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS) -framework Cocoa -framework QuartzCore
-	@echo "✓ compilation success: $@"
+mac_um: $(MACOS_SOURCES) $(CORE_OBJS)
+	mkdir -p UniverseMindmap.app/Contents/MacOS
+	$(CC) $(CFLAGS) $^ -o UniverseMindmap.app/Contents/MacOS/UniverseMindmap $(LDFLAGS) -framework Cocoa -framework QuartzCore
+	@echo "✓ compilation success: UniverseMindmap.app"
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@

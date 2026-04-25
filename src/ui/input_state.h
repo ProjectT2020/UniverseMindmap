@@ -20,6 +20,8 @@ enum input_state_type{
 typedef struct {
     enum input_state_type type;
     char prefix;
+    int prefix_count;
+    char key_buffer[64]; // for storing keys in prefix states
     Queue *uo_queue;
 } InputState;
 
