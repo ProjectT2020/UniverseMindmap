@@ -390,7 +390,7 @@ replacementString:(NSString *)string
     textLayer.frame = CGRectMake(
         [self mindmap_x2canvas_x:origin_x],
         frame_y,
-        textSize.width, default_base_points);
+        textSize.width > 2 ? textSize.width : 2, default_base_points);
     if(is_current) {
         self.currentNodeFrame = textLayer.frame;
         // self.currentNodeFrame = CGRectMake(

@@ -87,6 +87,9 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
       case ';':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_TO_EDIT_HISTORY};
+      case 'y':
+        input_state->type = INPUT_STATE_DEFAULT;
+        return (UserOperation){.type = UO_COPY_TEXT_TO_SYSTEM_CLIPBOARD};
       case 'p':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_PASTE_AS_CHILD};
@@ -272,6 +275,10 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
             return (UserOperation){.type = UO_ADD_SIBLING_BELOW};
         case 'O':
             return (UserOperation){.type = UO_ADD_SIBLING_ABOVE};
+        case '#':
+            return (UserOperation){.type = UO_SEARCH_PREV_EXACT};
+        case '*':
+             return (UserOperation){.type = UO_SEARCH_NEXT_EXACT};
         case '/':
             return (UserOperation){.type = UO_SEARCH};
         case '^':

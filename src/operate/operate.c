@@ -1080,6 +1080,16 @@ static uint64_t str2id(const char *str){
     return id;
 }
 
+static void ensure_edit_history_collapsed(Operate *operate, uint64_t edit_history_node_id){
+    TreeNode edit_history_node = tree_find_by_id(operate->overlay, edit_history_node_id);
+    if(tree_node_is_null(edit_history_node)){
+        return;
+    }
+    if(!tree_node_is_collapsed(edit_history_node)){
+        tree_node_set_collapse(operate->overlay, &edit_history_node, true);
+    }
+}
+
 int operate_edit_history_record(Operate *operate, Event *event){
     TreeNode node = (TreeNode){ .kind = TREE_NODE_NULL };
     switch(event->type){
@@ -1109,6 +1119,9 @@ int operate_edit_history_record(Operate *operate, Event *event){
     operate_begin_transaction(operate);
     TreeNode edit_history_node = app_metadata_key_node(operate, APP_META_EDIT_HISTORY);
     assert(!tree_node_is_null(edit_history_node));
+    uint64_t edit_history_node_id = tree_node_id(edit_history_node);
+    ensure_edit_history_collapsed(operate, edit_history_node_id);
+    edit_history_node = tree_find_by_id(operate->overlay, edit_history_node_id);
     TreeNode last_record = operate_edit_history_last_record(operate, edit_history_node);
     char * node_id_str = tree_node_id_str(node);
     if(tree_node_is_null(last_record)) {
@@ -1233,8 +1246,12 @@ int operate_edit_history_record(Operate *operate, Event *event){
             event_destroy(record_event);
             return -1;
         }
+        event_destroy(record_event);
     }
+    ensure_edit_history_collapsed(operate, edit_history_node_id);
     operate_commit_transaction(operate);
+    ensure_edit_history_collapsed(operate, edit_history_node_id);
+    return 0;
 }
 
 bool is_search_match(const char *node_text, const char *query){

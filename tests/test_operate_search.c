@@ -295,6 +295,39 @@ static void test_lowercase_a_appends_text_in_headless_flow(void) {
     wal_close(wal);
 }
 
+static void test_edit_history_record_keeps_history_node_collapsed(void) {
+    TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_edit_history_collapsed.umt");
+    assert(ov != NULL);
+
+    Wal *wal = wal_open("/tmp/um_edit_history_collapsed.wal");
+    assert(wal != NULL);
+
+    Operate *operate = operate_create(wal, ov);
+    assert(operate != NULL);
+
+    TreeNode root = ov->root;
+    TreeNode current = tree_add_first_child(ov, &root, "current");
+    assert(!tree_node_is_null(current));
+
+    TreeNode edit_history_node = app_metadata_key_node(operate, APP_META_EDIT_HISTORY);
+    assert(!tree_node_is_null(edit_history_node));
+    tree_node_set_collapse(ov, &edit_history_node, false);
+    assert(!tree_node_is_collapsed(edit_history_node));
+
+    Event event = {
+        .type = EVENT_UPDATE_TEXT,
+        .node_id = tree_node_id(current)
+    };
+    assert(operate_edit_history_record(operate, &event) == 0);
+
+    edit_history_node = tree_find_by_id(ov, tree_node_id(edit_history_node));
+    assert(!tree_node_is_null(edit_history_node));
+    assert(tree_node_is_collapsed(edit_history_node));
+
+    operate_destroy(operate);
+    wal_close(wal);
+}
+
 int main(void) {
     test_search_hits_first_child();
     test_search_in_empty_subtree_returns_null();
@@ -306,6 +339,7 @@ int main(void) {
     test_gd_hierarchy_filter_skips_dot_metadata();
     test_expand_all_descendants_skips_meta_subtree();
     test_lowercase_a_appends_text_in_headless_flow();
+    test_edit_history_record_keeps_history_node_collapsed();
 
     printf("[PASS] operate search tests\n");
     return 0;
