@@ -274,6 +274,8 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
             return (UserOperation){.type = UO_COPY_SUBTREE};
         case 'p':
             return (UserOperation){.type = UO_PASTE_SIBLING_BELOW};
+        case 'P':
+            return (UserOperation){.type = UO_PASTE_SIBLING_ABOVE};
         case 't':
             input_state->type = INPUT_STATE_TYPE_JUMP_TO_VISIBLE_TAG;
             input_state->prefix = 't';
@@ -291,6 +293,10 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
         case '\t':
         case 'A':
             return (UserOperation){.type = UO_ADD_CHILD_TO_TAIL};
+        case 'x':
+            return (UserOperation){.type = UO_CUT_NODE};
+        case '\n':
+        case '\r':
         case 'o':
             return (UserOperation){.type = UO_ADD_SIBLING_BELOW};
         case 'O':

@@ -40,6 +40,10 @@ NSFont *default_font() {
     return [NSFont monospacedSystemFontOfSize:default_text_points weight:NSFontWeightRegular];
 }
 
+NSFont *default_font_bold() {
+    return [NSFont monospacedSystemFontOfSize:default_text_points weight:NSFontWeightBold];
+}
+
 CGSize measure_text(NSString *text) {
     NSFont *font = default_font();
     NSDictionary *attr = @{ NSFontAttributeName: font };
@@ -141,10 +145,10 @@ replacementString:(NSString *)string
                                  withString:string];
         if(lengthAdded){
             textView.frame = NSMakeRect(textView.frame.origin.x, textView.frame.origin.y,
-                         measure_text(newString).width, textView.frame.size.height);
+                         measure_text(newString).width + 2, textView.frame.size.height);
         }
     }
-    if ([string isEqualToString:@"\n"]) {
+    if ([string isEqualToString:@"\n"] || [string isEqualToString:@"\t"]) {
         [textView.window makeFirstResponder:self];
         textView.hidden = YES;
 
@@ -165,6 +169,14 @@ replacementString:(NSString *)string
                     [self render_mindmap];
                 }
             ];
+            if([string isEqualToString:@"\t"]){
+                UserOperation uo = (UserOperation){.type = UO_ADD_CHILD_TO_TAIL};
+                app_apply_event(app_state, uo);
+                [self layout];
+                [self performWithoutImplicitAnimation:^{
+                    [self render_mindmap];
+                }];
+            }
             return NO;
         }
 
@@ -405,7 +417,8 @@ replacementString:(NSString *)string
         markLayer.string = [NSString stringWithFormat:@"%c%c", tag1, tag2];
         NSSize markTextSize = measure_text(markLayer.string);
         markLayer.fontSize = default_text_points;
-        markLayer.font = default_font();
+        markLayer.font = default_font_bold();
+        
         markLayer.foregroundColor = [NSColor whiteColor].CGColor;
         markLayer.frame = CGRectMake(
             textLayer.frame.origin.x - markTextSize.width - 2,
@@ -1102,6 +1115,7 @@ replacementString:(NSString *)string
                 || key == '#' || key == '$' || key == '%' || key == '^' || key == '&' || key == '*' || key == '(' || key == ')'
                 || key == '-' || key == '=' || key == ' '
                 || key == '\t' || key == ';' || key == '\\'
+                || key == '\n' || key == '\r'
                 ){ 
                 UserOperation uo = input_convert(app_state->input_state, key, 0, NULL, NO);
                 app_apply_event(app_state, uo);
@@ -1310,6 +1324,17 @@ NSMenu * buildMenu() {
     NSMenu *helpMenu = [[NSMenu alloc] initWithTitle:@"Help"];
         NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:@"About" action:nil keyEquivalent:@""];
         [helpMenu addItem:aboutItem];
+
+
+    NSMenuItem *editMenuItem = [[NSMenuItem alloc] initWithTitle:@"Edit" action:nil keyEquivalent:@""];
+    NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+    
+    NSMenuItem *pasteItem = [[NSMenuItem alloc] initWithTitle:@"Paste" 
+                                                       action:@selector(paste:) 
+                                                keyEquivalent:@"v"];
+    [editMenu addItem:pasteItem];
+    [editMenuItem setSubmenu:editMenu];
+    [mainMenu addItem:editMenuItem];
 
     NSMenuItem *helpMenuItem = [[NSMenuItem alloc] initWithTitle:@"Help" action:nil keyEquivalent:@""];
     [helpMenuItem setSubmenu:helpMenu];
