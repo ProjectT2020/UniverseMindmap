@@ -15,6 +15,7 @@ enum input_state_type{
     INPUT_STATE_TYPE_GET_NAME_INSERT_END,
     INPUT_STATE_TYPE_GET_COMMAND,
     INPUT_STATE_TYPE_COMPUTED_INPUT, // for inputs that are computed from other inputs, e.g. add child to tail when user presses TAB in get name input state
+    INPUT_STATE_TYPE_JUMP_TO_VISIBLE_TAG,
 };
 
 typedef struct {
@@ -23,6 +24,7 @@ typedef struct {
     int prefix_count;
     char key_buffer[64]; // for storing keys in prefix states
     Queue *uo_queue;
+    bool mark_and_show_visible_nodes; // for jump to visible tag state, whether to mark the node and show it in the UI
 } InputState;
 
 InputState* input_state_create();

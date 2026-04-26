@@ -370,10 +370,10 @@ static void mindmap_render_node(UiContext *ctx, TreeNode n, int origin_x, int or
     // show jump mark
     if(!tree_node_is_null(parent) && link_x >=0 && link_x < view_w){
         const int mark_page_size = 26 * 26; // 676
-        if(app->mark_and_show_visible_nodes && ctx->mark >= mark_page_size){
-            app->mark_and_show_visible_nodes = false;
+        if(app->input_state->mark_and_show_visible_nodes && ctx->mark >= mark_page_size){
+            app->input_state->mark_and_show_visible_nodes = false;
         }
-        if(app->mark_and_show_visible_nodes){
+        if(app->input_state->mark_and_show_visible_nodes){
             if(0 <= ctx->mark && ctx->mark < mark_page_size){
                 // do mark
                 app->node_marks[ctx->mark] = node_id;

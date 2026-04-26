@@ -1933,6 +1933,29 @@ static void handle_jump_to_mark(AppState *app, UserOperation uo) {
 }
 
 static void handle_jump_to_ui_node_mark(AppState *app, UserOperation uo) {
+    if(uo.param2 != '\0'){
+        int mark_idx = ui_tag_to_index(uo.param1, uo.param2);
+        if(mark_idx == -1){
+            log_warn("Invalid UI node mark index for input '%c%c'", uo.param1, uo.param2);
+            return;
+        }
+        uint64_t node_id = app->node_marks[mark_idx];
+        if(node_id == 0){
+            log_warn("No UI node mark found for index %d", mark_idx);
+            return;
+        }
+        TreeNode node = tree_find_by_id(app->tree_overlay, node_id);
+        if(tree_node_is_null(node)){
+            log_warn("UI node mark target node id=%lu not found", node_id);
+        }else{
+            update_current_with_history(app, node);
+            app->input_state->mark_and_show_visible_nodes = false;
+            log_debug("Jumped to UI node mark %d at node id=%lu", mark_idx, node_id);
+            app_ui_info_set_message(app, "Jumped to UI node mark %d", mark_idx);
+        }
+        app->input_state->mark_and_show_visible_nodes = false;
+        return;
+    }
     int mark_idx = uo.param1;
     uint64_t node_id = app->node_marks[mark_idx];
     if(node_id == 0){
@@ -1945,7 +1968,7 @@ static void handle_jump_to_ui_node_mark(AppState *app, UserOperation uo) {
         return;
     }
     update_current_with_history(app, node);
-    app->mark_and_show_visible_nodes = false;
+    app->input_state->mark_and_show_visible_nodes = false;
     log_debug("Jumped to UI node mark %d at node id=%lu", mark_idx, node_id);
     app_ui_info_set_message(app, "Jumped to UI node mark %d", mark_idx);
 }
@@ -1976,6 +1999,12 @@ static void handle_index_from_root(AppState *app) {
     }
     app->show_child_position = false;
     log_debug("[handle_index_from_root] Finished index navigation, current_node id=%lu", tree_node_id(app->current_node));
+}
+
+static void handle_prepare_jump_to_visible_tag(AppState *app) {
+    app->input_state->mark_and_show_visible_nodes = true;
+    app->mark_id = -1;
+    log_debug("[handle_prepare_jump_to_visible_tag] Showing visible tag selection");
 }
 
 static void handle_to_edit_history(AppState *app) {
@@ -3712,6 +3741,9 @@ void app_apply_event(AppState *app, UserOperation uo) {
         break;
     case UO_INDEX_FROM_ROOT:
         handle_index_from_root(app);
+        break;
+    case UO_PREPARE_JUMP_TO_VISIBLE_TAG:
+        handle_prepare_jump_to_visible_tag(app);
         break;
 
     // edit history

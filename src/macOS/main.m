@@ -391,14 +391,36 @@ replacementString:(NSString *)string
         [self mindmap_x2canvas_x:origin_x],
         frame_y,
         textSize.width > 2 ? textSize.width : 2, default_base_points);
+    if(app_state->input_state->mark_and_show_visible_nodes 
+      && textLayer.frame.origin.y >= 0 
+      && textLayer.frame.origin.y + textLayer.frame.size.height <= self.worldLayer.bounds.size.height
+      && textLayer.frame.origin.x - default_text_points>= 0
+      && textLayer.frame.origin.x + textLayer.frame.size.width + default_text_points*2<= self.worldLayer.bounds.size.width
+    ){
+        app_state->mark_id++;
+        CATextLayer *markLayer = [CATextLayer layer];
+        markLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor;// without this the text will be blurry
+        char tag1 = '\0', tag2 = '\0';
+        ui_tag_index_to_tag(app_state->mark_id, &tag1, &tag2);
+        markLayer.string = [NSString stringWithFormat:@"%c%c", tag1, tag2];
+        NSSize markTextSize = measure_text(markLayer.string);
+        markLayer.fontSize = default_text_points;
+        markLayer.font = default_font();
+        markLayer.foregroundColor = [NSColor whiteColor].CGColor;
+        markLayer.frame = CGRectMake(
+            textLayer.frame.origin.x - markTextSize.width - 2,
+            textLayer.frame.origin.y, markTextSize.width + 2, markTextSize.height);
+        markLayer.alignmentMode = kCAAlignmentCenter;
+        markLayer.foregroundColor = [NSColor colorWithCalibratedRed:0.1 green:0.5 blue:0.2 alpha:1].CGColor;
+        markLayer.backgroundColor = [NSColor whiteColor].CGColor;
+        markLayer.borderColor = [NSColor colorWithCalibratedRed:0.1 green:0.5 blue:0.2 alpha:1].CGColor;
+        markLayer.borderWidth = 1.0;
+        markLayer.cornerRadius = 2.0;
+        [worldLayer addSublayer:markLayer];
+        app_state->node_marks[app_state->mark_id] = tree_node_id(node);
+    }
     if(is_current) {
         self.currentNodeFrame = textLayer.frame;
-        // self.currentNodeFrame = CGRectMake(
-        //     origin_x,
-        //     origin_y,
-        //     textSize.width, 
-        //     layout_height_points
-        // );
     }
     if(self.hitTesting) {
         if(CGRectContainsPoint(textLayer.frame, self.p_in_doc_view)) {
@@ -594,6 +616,9 @@ replacementString:(NSString *)string
 
 
     // render 
+    if(app_state->input_state->mark_and_show_visible_nodes){
+        app_state->mark_id = -1;
+    }
     [self mindmap_render_node:(AppState *) app_state node:app_state->tree_overlay->root worldLayer:self.worldLayer originX:0 originY:0 parentY:0];
     // flush
     [CATransaction flush];

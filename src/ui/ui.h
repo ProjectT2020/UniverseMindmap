@@ -13,6 +13,8 @@
 typedef struct {
     enum {
         UO_NOP,                   // No operation
+
+        // navigation
         UO_JOIN_SIBLING_AS_CHILD,
         UO_MOVE_FOCUS_UP,
         UO_MOVE_FOCUS_DOWN,
@@ -36,6 +38,7 @@ typedef struct {
         UO_MOVE_PARENT_NEXT_SIBLING_BEGIN,
         UO_MOVE_PARENT_NEXT_SIBLING_END,
         UO_INDEX_FROM_ROOT,
+        UO_PREPARE_JUMP_TO_VISIBLE_TAG,
 
         // task
         UO_CREATE_CHILD_TASK,
@@ -217,5 +220,7 @@ void ui_reset_layout(void *ui_ctx);
 
 
 int mind_node_height(TreeOverlay *ov, TreeNode n) ;
+int ui_tag_index_to_tag(int tag_index, char *tag0, char *tag1);
+int ui_tag_to_index(char tag0, char tag1);
 
 #endif // UI_H

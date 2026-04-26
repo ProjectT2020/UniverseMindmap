@@ -299,7 +299,7 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
             break;
         }
         case 't':{
-            app->mark_and_show_visible_nodes = true;
+            app->input_state->mark_and_show_visible_nodes = true;
             ctx->mark_page = 0;
             ctx->mark = 0;
             ctx->app->fix_view = true;
@@ -315,7 +315,7 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
                     log_info("Unknown input sequence: f%c%c\n", next, next2);
                 }
             } else {
-                app->mark_and_show_visible_nodes = false;
+                app->input_state->mark_and_show_visible_nodes = false;
                 ctx->app->fix_view = false;
                 log_info("Unknown input sequence: f%c\n", next);
             }
@@ -1363,4 +1363,50 @@ int mind_node_height(TreeOverlay *ov, TreeNode n) {
     }
 
     return tree_node_layout_height(ov, n);
+}
+
+/**
+ * 'aa' ... 'az', 'ba' ... 'bz', ... 'za' ... 'zz', 
+ * 'aA' ... 'aZ', 'bA' ... 'bZ', ... 'zA' ... 'zZ',
+ * 'Aa' ... 'Az', 'Ba' ... 'Bz', ... 'Za' ... 'Zz',
+ * 'AA' ... 'AZ', 'BA' ... 'BZ', ... 'ZA' ... 'ZZ'
+ * total (26 * 2)^2 = 2704 tags
+ */
+int ui_tag_index_to_tag(int tag_index, char *tag0, char *tag1){
+    if(tag_index < 0 || tag_index >= 2704){
+        return -1; // invalid tag index
+    }
+    if(tag_index < 26 * 26){
+        *tag0 = 'a' + tag_index / 26;
+        *tag1 = 'a' + tag_index % 26;
+    }else if(tag_index < 2 * 26 * 26){
+        tag_index -= 26 * 26;
+        *tag0 = 'a' + tag_index / 26;
+        *tag1 = 'A' + tag_index % 26;
+    }else if(tag_index < 3 * 26 * 26){
+        tag_index -= 2 * 26 * 26;
+        *tag0 = 'A' + tag_index / 26;
+        *tag1 = 'a' + tag_index % 26;
+    }else{
+        tag_index -= 3 * 26 * 26;
+        *tag0 = 'A' + tag_index / 26;
+        *tag1 = 'A' + tag_index % 26;
+    }
+    return 0;
+}
+int ui_tag_to_index(char tag0, char tag1){
+    if(tag0 >= 'a' && tag0 <= 'z'){
+        if(tag1 >= 'a' && tag1 <= 'z'){
+            return (tag0 - 'a') * 26 + (tag1 - 'a');
+        }else if(tag1 >= 'A' && tag1 <= 'Z'){
+            return 26 * 26 + (tag0 - 'a') * 26 + (tag1 - 'A');
+        }
+    }else if(tag0 >= 'A' && tag0 <= 'Z'){
+        if(tag1 >= 'a' && tag1 <= 'z'){
+            return 2 * 26 * 26 + (tag0 - 'A') * 26 + (tag1 - 'a');
+        }else if(tag1 >= 'A' && tag1 <= 'Z'){
+            return 3 * 26 * 26 + (tag0 - 'A') * 26 + (tag1 - 'A');
+        }
+    }
+    return -1; // invalid tag
 }

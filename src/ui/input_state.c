@@ -21,6 +21,22 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
     input_state->type = INPUT_STATE_DEFAULT;
     return (UserOperation){.type = UO_DO_SEARCH, .data = (void*)strdup(text)};
   }
+  if(input_state->type == INPUT_STATE_TYPE_JUMP_TO_VISIBLE_TAG){
+     if(input_state->prefix_count == 0){
+          input_state->prefix_count++;
+          input_state->key_buffer[0] = key;
+          return (UserOperation){.type = UO_NOP};
+      } else {
+          input_state->type = INPUT_STATE_DEFAULT;
+          input_state->prefix_count = 0;
+          input_state->key_buffer[1] = key;
+          UserOperation uo;
+          uo.type = UO_JUMP_TO_UI_NODE_MARK;
+          uo.param1 = input_state->key_buffer[0];
+          uo.param2 = input_state->key_buffer[1];
+          return uo;
+     }
+  }
   if (input_state->type == INPUT_STATE_PREFIX) {
     switch (input_state->prefix) {
         case '\'':
@@ -258,6 +274,10 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
             return (UserOperation){.type = UO_COPY_SUBTREE};
         case 'p':
             return (UserOperation){.type = UO_PASTE_SIBLING_BELOW};
+        case 't':
+            input_state->type = INPUT_STATE_TYPE_JUMP_TO_VISIBLE_TAG;
+            input_state->prefix = 't';
+            return (UserOperation){.type = UO_PREPARE_JUMP_TO_VISIBLE_TAG};
         case 'n':
             return (UserOperation){.type = UO_SEARCH_NEXT};
         case 'N':

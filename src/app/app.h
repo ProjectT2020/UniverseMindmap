@@ -33,7 +33,7 @@ typedef struct AppState {
     bool global_enable_hide; // global flag to enable hiding nodes (not show hidden  nodes)
     bool show_child_position;       // UI
     char *info_message;         // message to show in status bar
-    bool mark_and_show_visible_nodes;
+    int mark_id;
     uint64_t node_marks[26 * 26]; // mark -> node id
 
     // UI callbacks
