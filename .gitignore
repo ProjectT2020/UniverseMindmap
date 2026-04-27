@@ -14,3 +14,6 @@ tests/*_test
 .dSYM/
 tmp
 UniverseMindmap.app
+build/
+dist/
+AppIcon.iconset/

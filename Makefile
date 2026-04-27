@@ -63,6 +63,48 @@ mac_um: $(MACOS_SOURCES) $(CORE_OBJS)
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+build: $(MACOS_SOURCES) $(CORE_OBJS)
+	mkdir -p build
+	$(CC) $(CFLAGS) $^ -o build/UniverseMindmap -framework Cocoa -framework QuartzCore
+
+APP_NAME = UniverseMindmap
+APP_DIR = dist/$(APP_NAME).app
+CONTENTS = $(APP_DIR)/Contents
+MACOS = $(CONTENTS)/MacOS
+RESOURCES = $(CONTENTS)/Resources
+
+ICON_BUILD_DIR = build/icon
+ICONSET = $(ICON_BUILD_DIR)/AppIcon.iconset
+ICON = $(ICON_BUILD_DIR)/AppIcon.icns
+
+app: build icon
+	mkdir -p $(MACOS)
+	mkdir -p $(RESOURCES)
+
+	cp build/$(APP_NAME) $(MACOS)/
+	cp resources/Info.plist $(CONTENTS)/
+	cp $(ICON) $(RESOURCES)/
+
+icon:
+	rm -rf $(ICONSET) $(ICON)
+	mkdir -p $(ICONSET)
+
+	sips -z 16 16     resources/icon.png --out $(ICONSET)/icon_16x16.png
+	sips -z 32 32     resources/icon.png --out $(ICONSET)/icon_16x16@2x.png
+	sips -z 32 32     resources/icon.png --out $(ICONSET)/icon_32x32.png
+	sips -z 64 64     resources/icon.png --out $(ICONSET)/icon_32x32@2x.png
+	sips -z 128 128   resources/icon.png --out $(ICONSET)/icon_128x128.png
+	sips -z 256 256   resources/icon.png --out $(ICONSET)/icon_128x128@2x.png
+	sips -z 256 256   resources/icon.png --out $(ICONSET)/icon_256x256.png
+	sips -z 512 512   resources/icon.png --out $(ICONSET)/icon_256x256@2x.png
+	sips -z 512 512   resources/icon.png --out $(ICONSET)/icon_512x512.png
+	cp resources/icon.png $(ICONSET)/icon_512x512@2x.png
+
+	iconutil -c icns $(ICONSET)
+
+clean_icon:
+	rm -rf $(ICON_BUILD_DIR)
+
 run: $(TARGET)
 	$(TARGET)
 
