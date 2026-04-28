@@ -136,16 +136,15 @@ replacementString:(NSString *)string
     if(app_state->input_state->type == INPUT_STATE_TYPE_GET_NAME 
     || app_state->input_state->type == INPUT_STATE_TYPE_GET_NAME_INSERT_FRONT
     || app_state->input_state->type == INPUT_STATE_TYPE_GET_NAME_INSERT_END){
-        NSInteger oldLength = textView.string.length;
-        NSInteger newLength = oldLength - range.length + string.length;
-        // NSInteger originTextLenth = [NSString stringWithUTF8String:tree_node_text(app_state->current_node)].length;
-        BOOL lengthAdded = (newLength > oldLength);
         NSString *old = textView.string;
+        CGFloat oldWidth = measure_text(old).width;
         NSString *newString = [old stringByReplacingCharactersInRange:range
                                  withString:string];
-        if(lengthAdded){
+        CGFloat newWidth = measure_text(newString).width;
+        BOOL widthAdded = (newWidth > oldWidth);
+        if(widthAdded){
             textView.frame = NSMakeRect(textView.frame.origin.x, textView.frame.origin.y,
-                         measure_text(newString).width + 2, textView.frame.size.height);
+                        newWidth + default_text_points / 4.0, textView.frame.size.height);
         }
     }
     if ([string isEqualToString:@"\n"] || [string isEqualToString:@"\t"]) {
@@ -1130,6 +1129,7 @@ replacementString:(NSString *)string
                         app_state->input_state->prefix_count,
                         app_state->input_state->key_buffer];
 
+                    self.buttomCommandTextView.font = default_font();
                     self.buttomCommandTextView.backgroundColor = [NSColor blackColor];
                     self.buttomCommandTextView.textColor = [NSColor whiteColor];
                     self.buttomCommandTextView.hidden = NO;
@@ -1185,6 +1185,7 @@ void canvas_view_center_view_on_current(void *view){
 char* canvas_view_get_search_query(void *view){
     CanvasView *v = (__bridge CanvasView *)view;
     NSTextView *textView = v.buttomCommandTextView;
+    textView.font = default_font();
     textView.backgroundColor = [NSColor blackColor];
     textView.textColor = [NSColor whiteColor];
     textView.string = @"/";
