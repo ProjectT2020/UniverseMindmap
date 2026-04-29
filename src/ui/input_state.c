@@ -80,7 +80,7 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
                 input_state->type = INPUT_STATE_DEFAULT;
                 return (UserOperation){.type = UO_NOP};
           }
-    case 'g':
+    case 'g': // prefix g
       switch (key) {
       case 'g':
         input_state->type = INPUT_STATE_DEFAULT;
@@ -94,6 +94,9 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
       case 'D':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_OPEN_RESOURCE_LINK};
+      case 'S':
+        input_state->type = INPUT_STATE_DEFAULT;
+        return (UserOperation){.type = UO_SEARCH_ENGINE};
       case 'j':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_MOVE_FOCUS_DOWN};
@@ -106,6 +109,9 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
       case 'y':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_COPY_TEXT_TO_SYSTEM_CLIPBOARD};
+      case 'Y':
+        input_state->type = INPUT_STATE_DEFAULT;
+        return (UserOperation){.type = UO_COPY_SUBTREE_TO_SYSTEM_CLIPBOARD};
       case 'p':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_PASTE_AS_CHILD};

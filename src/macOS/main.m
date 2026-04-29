@@ -977,6 +977,12 @@ replacementString:(NSString *)string
         }
 
         switch (key) {
+            case 'c':
+            {
+                UserOperation uo = (UserOperation){.type = UO_COPY_SUBTREE_TO_SYSTEM_CLIPBOARD};
+                app_apply_event(app_state, uo);
+                return;
+            }
             case 'w':
             {
                 UserOperation uo = (UserOperation){.type = UO_EXIT_SAVE};

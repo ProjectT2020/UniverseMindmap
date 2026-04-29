@@ -32,7 +32,7 @@ static int is_unreserved(unsigned char ch) {
 	return ((ch >= 'A' && ch <= 'Z') ||
 			(ch >= 'a' && ch <= 'z') ||
 			(ch >= '0' && ch <= '9') ||
-			ch == '-' || ch == '.' || ch == '_' || ch == '~' || ch == '/');
+			ch == '-' || ch == '.' || ch == '_' || ch == '~' || ch == '/' || ch == '#');
 }
 
 static const char *find_var_value(const char *name,
