@@ -9,13 +9,16 @@ extern AppState* app_state;
 static EventHotKeyRef gSelfHotKeyRef;
 static EventHotKeyRef gFirefoxHotKeyRef;
 static EventHotKeyRef gTerminalHotKeyRef;
+static EventHotKeyRef gVsCodeHotKeyRef;
 static NSString * const FirefoxBundleIdentifier = @"org.mozilla.firefox";
 static NSString * const TerminalBundleIdentifier = @"com.apple.Terminal";
+static NSString * const VsCodeBundleIdentifier = @"com.microsoft.VSCode";
 
 typedef NS_ENUM(UInt32, DemoHotKeyID) {
     DemoHotKeyIDSelf,
     DemoHotKeyIDFirefox,
     DemoHotKeyIDTerminal,
+    DemoHotKeyIDVsCode,
 };
 
 
@@ -76,6 +79,39 @@ static void ActivateOrLaunchTerminal(void) {
     }];
 }
 
+static void ActivateOrLaunchVsCode(void) {
+    NSArray<NSRunningApplication *> *runningApps =
+        [NSRunningApplication runningApplicationsWithBundleIdentifier:VsCodeBundleIdentifier];
+
+    NSRunningApplication *vscode = runningApps.firstObject;
+    if (vscode) {
+        [vscode activateWithOptions:NSApplicationActivateAllWindows];
+        return;
+    }
+
+    NSURL *vscodeURL =
+        [[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:VsCodeBundleIdentifier];
+    if (!vscodeURL) {
+        // Try with the Insiders version
+        vscodeURL = [[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:@"com.microsoft.VSCodeInsiders"];
+        if (!vscodeURL) {
+            NSLog(@"VS Code is not installed or could not be found.");
+            return;
+        }
+    }
+
+    NSWorkspaceOpenConfiguration *configuration = [NSWorkspaceOpenConfiguration configuration];
+    configuration.activates = YES;
+
+    [[NSWorkspace sharedWorkspace] openApplicationAtURL:vscodeURL
+                                          configuration:configuration
+                                      completionHandler:^(NSRunningApplication *app, NSError *error) {
+        if (error) {
+            NSLog(@"Failed to launch VS Code: %@", error);
+        }
+    }];
+}
+
 OSStatus HotKeyHandler(EventHandlerCallRef nextHandler,
                        EventRef event,
                        void *userData) {
@@ -95,6 +131,9 @@ OSStatus HotKeyHandler(EventHandlerCallRef nextHandler,
             break;
         case DemoHotKeyIDTerminal:
             ActivateOrLaunchTerminal();
+            break;
+        case DemoHotKeyIDVsCode:
+            ActivateOrLaunchVsCode();
             break;
         case DemoHotKeyIDSelf:
             [NSApp activateIgnoringOtherApps:YES];
@@ -160,6 +199,12 @@ OSStatus HotKeyHandler(EventHandlerCallRef nextHandler,
     if (gFirefoxHotKeyRef) {
         UnregisterEventHotKey(gFirefoxHotKeyRef);
     }
+    if (gTerminalHotKeyRef) {
+        UnregisterEventHotKey(gTerminalHotKeyRef);
+    }
+    if (gVsCodeHotKeyRef) {
+        UnregisterEventHotKey(gVsCodeHotKeyRef);
+    }
     if (gSelfHotKeyRef) {
         UnregisterEventHotKey(gSelfHotKeyRef);
     }
@@ -208,6 +253,16 @@ OSStatus HotKeyHandler(EventHandlerCallRef nextHandler,
         GetApplicationEventTarget(),
         0,
         &gTerminalHotKeyRef
+    );
+
+    hotKeyID.id = DemoHotKeyIDVsCode;
+    RegisterEventHotKey(
+        kVK_ANSI_V,                // V
+        cmdKey | controlKey,       // ⌘ + ^
+        hotKeyID,
+        GetApplicationEventTarget(),
+        0,
+        &gVsCodeHotKeyRef
     );
 
 }
