@@ -56,6 +56,6 @@ double text_field_display_width(TreeNode node);
 @property(nonatomic) CGPoint viewOrigon;
 @property(nonatomic) CGFloat zoomScale;
 @property(nonatomic) CGRect currentNodeFrame;
-@property(nonatomic) TextInputView *buttomCommandTextView;
+@property(nonatomic) TextInputView *bottomCommandTextView;
 // @property(nonatomic) CFTimeInterval lastFPSUpdateTime;
 @end

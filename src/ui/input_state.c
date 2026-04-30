@@ -198,12 +198,13 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
       case 'M':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_FOLD_LEVEL_1};
-      case '.':
-        input_state->type = INPUT_STATE_DEFAULT;
-        return (UserOperation){.type = UO_CENTER_VIEW};
-          case 's':
-              input_state->type = INPUT_STATE_DEFAULT;
-              return (UserOperation){.type = UO_PLACE_LEFT};
+       case '.':
+       case 'z':
+         input_state->type = INPUT_STATE_DEFAULT;
+         return (UserOperation){.type = UO_CENTER_VIEW};
+           case 's':
+               input_state->type = INPUT_STATE_DEFAULT;
+               return (UserOperation){.type = UO_PLACE_LEFT};
           case 'e':
               input_state->type = INPUT_STATE_DEFAULT;
               return (UserOperation){.type = UO_PLACE_RIGHT};

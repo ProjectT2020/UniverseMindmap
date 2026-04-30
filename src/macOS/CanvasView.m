@@ -47,8 +47,9 @@ void canvas_view_center_view_on_current(void *view){
 
 char* canvas_view_get_search_query(void *view){
     CanvasView *v = (__bridge CanvasView *)view;
-    NSTextView *textView = v.buttomCommandTextView;
+    NSTextView *textView = v.bottomCommandTextView;
     textView.font = default_font();
+    textView.drawsBackground = YES;
     textView.backgroundColor = [NSColor blackColor];
     textView.textColor = [NSColor whiteColor];
     textView.string = @"/";
@@ -263,15 +264,16 @@ replacementString:(NSString *)string
         // self.layer = [CALayer layer];
         // self.layer.backgroundColor = [NSColor grayColor].CGColor;
 
-        _buttomCommandTextView = [[TextInputView alloc] initWithFrame:CGRectMake(0, default_base_points, 
+        self.bottomCommandTextView = [[TextInputView alloc] initWithFrame:CGRectMake(0, default_base_points, 
                 self.bounds.size.width, default_base_points)];
-        _buttomCommandTextView.font = default_font();
-        _buttomCommandTextView.backgroundColor = [NSColor grayColor];
-        _buttomCommandTextView.textColor = [NSColor blackColor];
-        _buttomCommandTextView.string = @"Command --";
-        _buttomCommandTextView.delegate = (self);
-        _buttomCommandTextView.hidden = YES;
-        _buttomCommandTextView.onCancel = ^{
+        self.bottomCommandTextView.font = default_font();
+        self.bottomCommandTextView.drawsBackground = YES;
+        self.bottomCommandTextView.backgroundColor = [NSColor grayColor];
+        self.bottomCommandTextView.textColor = [NSColor blackColor];
+        self.bottomCommandTextView.string = @"Command --";
+        self.bottomCommandTextView.delegate = (self);
+        self.bottomCommandTextView.hidden = YES;
+        self.bottomCommandTextView.onCancel = ^{
           logd("callback: Text input cancelled");
           app_state->input_state->type = INPUT_STATE_DEFAULT;
           [self layout];
@@ -280,7 +282,7 @@ replacementString:(NSString *)string
             [self render_mindmap];
           }];
         };
-        [self addSubview:_buttomCommandTextView positioned:NSWindowAbove relativeTo:nil];
+        [self addSubview:self.bottomCommandTextView positioned:NSWindowAbove relativeTo:nil];
 
         _worldLayer = [CALayer layer];
         _worldLayer.anchorPoint = CGPointZero;
@@ -440,11 +442,11 @@ replacementString:(NSString *)string
     // logd("Rendering node '%s' at (%.2f, %.2f) with layout height %.2f points", tree_node_text(node), origin_x, origin_y, layout_height_points);
     CGSize textSize = measure_text(textLayer.string);
     double frame_y = [self mindmap_y2canvas_y:origin_y] - layout_height_points / 2.0 - default_base_points / 2.0;
-    bool moved_to_buttom_when_current_ancestor_is_hidden = false;
+    bool moved_to_bottom_when_current_ancestor_is_hidden = false;
     bool moved_to_top_when_current_ancestor_is_hidden = false;
     // if(is_tree_node_ancestor(state->tree_overlay, node, state->current_node)){
         if(frame_y < 0){
-            moved_to_buttom_when_current_ancestor_is_hidden = true;
+            moved_to_bottom_when_current_ancestor_is_hidden = true;
             frame_y = 0;
             if(origin_y + default_base_points > self.viewOrigon.y + view_h){
                 frame_y = ( self.viewOrigon.y + view_h) - (origin_y + default_base_points );
@@ -531,7 +533,7 @@ replacementString:(NSString *)string
               );
         double next_y = 0;
         bool only_child = tree_node_is_null(tree_node_next_sibling(state->tree_overlay, child));
-        if(moved_to_buttom_when_current_ancestor_is_hidden && !only_child){
+        if(moved_to_bottom_when_current_ancestor_is_hidden && !only_child){
             next_y = textLayer.frame.origin.y ;
         }else if(moved_to_top_when_current_ancestor_is_hidden && !only_child){
             next_y = textLayer.frame.origin.y + default_base_points ;
@@ -564,9 +566,10 @@ replacementString:(NSString *)string
 }
 
 - (void)canvas_view_get_name{
-    NSTextView *textView = self.buttomCommandTextView;
+    NSTextView *textView = self.bottomCommandTextView;
     textView.textContainerInset = NSMakeSize(0, 0);
     textView.textContainer.lineFragmentPadding = 0;
+    textView.drawsBackground = YES;
     textView.backgroundColor = [NSColor whiteColor];
     textView.textColor = [NSColor blackColor];
     textView.font = default_font();
@@ -1192,20 +1195,21 @@ replacementString:(NSString *)string
                     dont_adjust_doc_view_by_current = false;
                 }
                 if(app_state->input_state->type == INPUT_STATE_PREFIX){
-                    self.buttomCommandTextView.string = [NSString stringWithFormat:@"Prefix: %c%.*s", 
+                    self.bottomCommandTextView.string = [NSString stringWithFormat:@"Prefix: %c%.*s", 
                         app_state->input_state->prefix,
                         app_state->input_state->prefix_count,
                         app_state->input_state->key_buffer];
 
-                    self.buttomCommandTextView.font = default_font();
-                    self.buttomCommandTextView.backgroundColor = [NSColor blackColor];
-                    self.buttomCommandTextView.textColor = [NSColor whiteColor];
-                    self.buttomCommandTextView.hidden = NO;
-                    NSSize textSize = [self.buttomCommandTextView.string sizeWithAttributes:@{NSFontAttributeName: default_font()}];
-                    self.buttomCommandTextView.frame = CGRectMake(0, 0, textSize.width + default_text_points, default_base_points);
+                    self.bottomCommandTextView.font = default_font();
+                    self.bottomCommandTextView.drawsBackground = YES;
+                    self.bottomCommandTextView.backgroundColor = [NSColor blackColor];
+                    self.bottomCommandTextView.textColor = [NSColor whiteColor];
+                    self.bottomCommandTextView.hidden = NO;
+                    NSSize textSize = [self.bottomCommandTextView.string sizeWithAttributes:@{NSFontAttributeName: default_font()}];
+                    self.bottomCommandTextView.frame = CGRectMake(0, 0, textSize.width + default_text_points, default_base_points);
                     [self layout];
                 }else if(app_state->input_state->type != INPUT_STATE_TYPE_SEARCH_QUERY){
-                    self.buttomCommandTextView.hidden = YES;
+                    self.bottomCommandTextView.hidden = YES;
                 }
 
                 if(app_state->input_state->type != INPUT_STATE_PREFIX){// don't re-render on prefix input, wait for next key
