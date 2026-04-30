@@ -37,6 +37,8 @@ APP_SRCS := \
 	src/main.c
 
 MACOS_SOURCES := \
+	src/macOS/CanvasView.m \
+	src/macOS/AppDelegate.m \
 	src/macOS/main.m
 
 # Object files
@@ -57,7 +59,7 @@ $(TARGET): $(CORE_OBJS) $(APP_OBJS)
 
 mac_um: $(MACOS_SOURCES) $(CORE_OBJS)
 	mkdir -p UniverseMindmap.app/Contents/MacOS
-	$(CC) $(CFLAGS) $^ -o UniverseMindmap.app/Contents/MacOS/UniverseMindmap $(LDFLAGS) -framework Cocoa -framework QuartzCore
+	$(CC) $(CFLAGS) $^ -o UniverseMindmap.app/Contents/MacOS/UniverseMindmap $(LDFLAGS) -framework Cocoa -framework QuartzCore -framework Carbon
 	@echo "✓ compilation success: UniverseMindmap.app"
 
 %.o: %.c
@@ -65,7 +67,7 @@ mac_um: $(MACOS_SOURCES) $(CORE_OBJS)
 
 build: $(MACOS_SOURCES) $(CORE_OBJS)
 	mkdir -p build
-	$(CC) $(CFLAGS) $^ -o build/UniverseMindmap -framework Cocoa -framework QuartzCore
+	$(CC) $(CFLAGS) $^ -o build/UniverseMindmap -framework Cocoa -framework QuartzCore -framework Carbon
 
 APP_NAME = UniverseMindmap
 APP_DIR = dist/$(APP_NAME).app

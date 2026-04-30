@@ -36,12 +36,12 @@ typedef enum {
     // transaction control
     EVENT_BEGIN_TRANSACTION,
     EVENT_COMMIT_TRANSACTION
-} EventType;
+} UmEventType;
 
 // event struct
 typedef struct Event {
     uint64_t lsn;
-    EventType type;
+    UmEventType type;
     // node
     uint64_t node_id;
     bool collapsed;           // collapsed state

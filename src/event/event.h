@@ -23,11 +23,11 @@ Event *event_create_move_to_children_tail(uint64_t node_id, uint64_t new_parent_
 Event* event_create_delete_node(uint64_t node_id, uint64_t parent_id, uint64_t next_sibling_id, const char *text);
 Event* event_create_delete_subtree(uint64_t node_id);
 Event* event_create_update_text(uint64_t node_id, const char *new_text);
-Event* event_create_move_current(EventType type);
+Event* event_create_move_current(UmEventType type);
 Event* event_create_collapse_node(uint64_t node_id);
 Event* event_create_expand_node(uint64_t node_id);
 Event* event_create_scroll_view(int delta_y, int delta_x);
-Event* event_create(EventType type);
+Event* event_create(UmEventType type);
 
 
 // field modify
@@ -48,6 +48,6 @@ Event* event_deserialize(uint8_t *buf, size_t buf_size);
 
 int event_validate(Event *e);
 
-const char* event_type_to_string(EventType type);
+const char* event_type_to_string(UmEventType type);
 
 #endif // EVENT_H

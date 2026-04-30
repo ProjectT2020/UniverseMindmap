@@ -237,7 +237,7 @@ Event* event_deserialize(uint8_t *buf, size_t buf_size) {
     return e;
 }
 
-Event* event_create(EventType type){
+Event* event_create(UmEventType type){
     Event *e = (Event*)calloc(1, sizeof(Event));
     if (!e) return NULL;
     e->type = type;
@@ -263,7 +263,7 @@ Event *event_create_move_subtree(
     return e;
 }
 
-Event* event_create_move_current(EventType type){
+Event* event_create_move_current(UmEventType type){
     Event *e = (Event*)calloc(1, sizeof(Event));
     if (!e) return NULL;
     e->type = type;
@@ -306,7 +306,7 @@ int event_validate(Event *e){
 }
 
 
-const char* event_type_to_string(EventType type) {
+const char* event_type_to_string(UmEventType type) {
     switch (type) {
         case EVENT_NONE: return "EVENT_NONE";
         case EVENT_ADD_SINGLE_NODE: return "EVENT_ADD_SINGLE_NODE";
