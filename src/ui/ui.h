@@ -228,5 +228,7 @@ void ui_reset_layout(void *ui_ctx);
 int mind_node_height(TreeOverlay *ov, TreeNode n) ;
 int ui_tag_index_to_tag(int tag_index, char *tag0, char *tag1);
 int ui_tag_to_index(char tag0, char tag1);
+int ui_tag_index_to_tag_left_hand(int tag_index, char *tag0, char *tag1);
+int ui_tag_to_index_left_hand(char tag0, char tag1);
 
 #endif // UI_H

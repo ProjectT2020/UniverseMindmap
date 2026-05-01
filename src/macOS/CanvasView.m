@@ -14,6 +14,7 @@ static int default_text_points = 12;// 14
 static int default_base_points = 15; // 17
 
 extern bool dont_adjust_doc_view_by_current;
+extern bool is_hand_on_mouse;
 static double view_w = 0;
 static double view_h = 0;
 
@@ -638,7 +639,11 @@ replacementString:(NSString *)string
         CATextLayer *markLayer = [CATextLayer layer];
         markLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor;// without this the text will be blurry
         char tag1 = '\0', tag2 = '\0';
-        ui_tag_index_to_tag(app_state->mark_id, &tag1, &tag2);
+        if(app_state->tag_mouse_mode){
+            ui_tag_index_to_tag_left_hand(app_state->mark_id, &tag1, &tag2);
+        }else{
+            ui_tag_index_to_tag(app_state->mark_id, &tag1, &tag2);
+        }
         markLayer.string = [NSString stringWithFormat:@"%c%c", tag1, tag2];
         NSSize markTextSize = measure_text(markLayer.string);
         markLayer.fontSize = default_text_points;
@@ -1112,6 +1117,7 @@ replacementString:(NSString *)string
 - (void)mouseDown:(NSEvent *)event {
     log_debug("mouseDown: %p, x: %.2f, y: %.2f", event, event.locationInWindow.x, event.locationInWindow.y);
     [self hideInfoMessage];
+    is_hand_on_mouse = true;
     self.lastMouse = [self convertPoint:event.locationInWindow fromView:nil];
     self.lastWorldPosition = self.viewOrigon;
     [self updateInfoView];
@@ -1125,6 +1131,7 @@ replacementString:(NSString *)string
 - (void)rightMouseDown:(NSEvent *)event {
     log_debug("rightMouseDown: %p, x: %.2f, y: %.2f", event, event.locationInWindow.x, event.locationInWindow.y);
     [self hideInfoMessage];
+    is_hand_on_mouse = true;
     self.lastMouse = [self convertPoint:event.locationInWindow fromView:nil];
     self.lastWorldPosition = self.viewOrigon;
     [self updateInfoView];
@@ -1133,6 +1140,7 @@ replacementString:(NSString *)string
 - (void)rightMouseDragged:(NSEvent *)event {
     log_debug("mouseDragged: %p, x: %.2f, y: %.2f", event, event.locationInWindow.x, event.locationInWindow.y);
     dont_adjust_doc_view_by_current = true;
+    is_hand_on_mouse = true;
     NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
 
     CGFloat dx = p.x - self.lastMouse.x;
@@ -1155,6 +1163,7 @@ replacementString:(NSString *)string
 // Mouse navigation buttons: back (button 3) = ^O, forward (button 4) = ^I
 - (void)otherMouseDown:(NSEvent *)event {
     [self hideInfoMessage];
+    is_hand_on_mouse = true;
     if (event.buttonNumber == 3 || event.buttonNumber == 4) {
         app_state->input_state->type = INPUT_STATE_DEFAULT;
         char key = (event.buttonNumber == 3) ? 'o' : 'i';
@@ -1171,6 +1180,7 @@ replacementString:(NSString *)string
 - (void)scrollWheel:(NSEvent *)event {
     [self hideInfoMessage];
     dont_adjust_doc_view_by_current = true;
+    is_hand_on_mouse = true;
 
     CGFloat dx = event.scrollingDeltaX;
     CGFloat dy = event.scrollingDeltaY;
@@ -1198,6 +1208,7 @@ replacementString:(NSString *)string
 - (void)mouseUp:(NSEvent *)event {
     log_debug("mouseUp: %p, x: %.2f, y: %.2f, clickCount: %ld", event, event.locationInWindow.x, event.locationInWindow.y, (long)event.clickCount);
     [self hideInfoMessage];
+    is_hand_on_mouse = true;
 
     // Double-click on titlebar zone → toggle zoom (maximize / restore)
     // fullSizeContentView 下系统不自动处理，需手动路由

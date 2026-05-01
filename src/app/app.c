@@ -45,6 +45,7 @@ static const char *CONTEXT_CODE_RESOURCE = "code"; // Parent node with text 'cod
 static const char *APP_TASK_STACK_NAME = "[Task Stack]"; // A special node to hold task list
 
 bool dont_adjust_doc_view_by_current;
+bool is_hand_on_mouse;
 
 static TreeNode app_ensure_metadata_node(Operate *operate); ;
 static void handle_add_child_to_tail(AppState *app, TreeNode node) ;
@@ -2089,7 +2090,12 @@ static void handle_jump_to_mark(AppState *app, UserOperation uo) {
 
 static void handle_jump_to_ui_node_mark(AppState *app, UserOperation uo) {
     if(uo.param2 != '\0'){
-        int mark_idx = ui_tag_to_index(uo.param1, uo.param2);
+        int mark_idx;
+        if(app->tag_mouse_mode){
+            mark_idx = ui_tag_to_index_left_hand(uo.param1, uo.param2);
+        }else{
+            mark_idx = ui_tag_to_index(uo.param1, uo.param2);
+        }
         if(mark_idx == -1){
             log_warn("Invalid UI node mark index for input '%c%c'", uo.param1, uo.param2);
             return;
@@ -2159,8 +2165,9 @@ static void handle_index_from_root(AppState *app) {
 static void handle_prepare_jump_to_visible_tag(AppState *app) {
     app->input_state->mark_and_show_visible_nodes = true;
     app->mark_id = -1;
+    app->tag_mouse_mode = is_hand_on_mouse;
     dont_adjust_doc_view_by_current = true;
-    log_debug("[handle_prepare_jump_to_visible_tag] Showing visible tag selection");
+    log_debug("[handle_prepare_jump_to_visible_tag] Showing visible tag selection (mouse_mode=%d)", app->tag_mouse_mode);
 }
 
 static void handle_cancel_jump_to_visible_tag(AppState *app) {
@@ -3717,6 +3724,7 @@ void app_apply_event_edit_history_mode(AppState *app, UserOperation uo) {
         default:
             handle_back_to_normal_operation_mode(app);
     }
+    is_hand_on_mouse = false;
 }
 
 void app_apply_event(AppState *app, UserOperation uo) {
@@ -4089,6 +4097,7 @@ void app_apply_event(AppState *app, UserOperation uo) {
         log_warn("Unhandled UserOperation type: %d", uo.type);
         break;
     }
+    is_hand_on_mouse = false;
 }
 
 static void enqueue_uo(AppState *app, UserOperation uo) {

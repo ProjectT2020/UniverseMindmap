@@ -76,6 +76,7 @@ typedef struct AppState {
     InputState *input_state; 
 
     bool show_ancestors;         // Ctrl+G toggle: flatten ancestors on current node line
+    bool tag_mouse_mode;         // 't' tag selection uses left-hand alphabet (mouse-triggered view)
 
     // searching
     char *search_query;

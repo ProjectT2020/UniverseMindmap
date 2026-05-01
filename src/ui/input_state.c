@@ -388,6 +388,7 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
         case '}':
             return (UserOperation){.type = UO_MOVE_PARENT_NEXT_SIBLING_END};
         case '$':
+        case 'W':
             return (UserOperation){.type = UO_MOVE_FOCUS_MOST_LEFT_UPPER};
         case 'E':
             return (UserOperation){.type = UO_MOVE_FOCUS_MOST_LEFT_LOWER};

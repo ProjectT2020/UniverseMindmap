@@ -1031,6 +1031,29 @@ int ui_tag_index_to_tag(int tag_index, char *tag0, char *tag1){
     }
     return 0;
 }
+
+static const char LEFT_HAND_ALPHABET[] = "12345qwertasdfgzxcvb";
+static const int LEFT_HAND_ALPHABET_SIZE = 20;
+
+int ui_tag_index_to_tag_left_hand(int tag_index, char *tag0, char *tag1){
+    if(tag_index < 0 || tag_index >= LEFT_HAND_ALPHABET_SIZE * LEFT_HAND_ALPHABET_SIZE){
+        return -1;
+    }
+    *tag0 = LEFT_HAND_ALPHABET[tag_index / LEFT_HAND_ALPHABET_SIZE];
+    *tag1 = LEFT_HAND_ALPHABET[tag_index % LEFT_HAND_ALPHABET_SIZE];
+    return 0;
+}
+
+int ui_tag_to_index_left_hand(char tag0, char tag1){
+    int i0 = -1, i1 = -1;
+    for(int i = 0; i < LEFT_HAND_ALPHABET_SIZE; i++){
+        if(LEFT_HAND_ALPHABET[i] == tag0) i0 = i;
+        if(LEFT_HAND_ALPHABET[i] == tag1) i1 = i;
+    }
+    if(i0 < 0 || i1 < 0) return -1;
+    return i0 * LEFT_HAND_ALPHABET_SIZE + i1;
+}
+
 int ui_tag_to_index(char tag0, char tag1){
     if(tag0 >= 'a' && tag0 <= 'z'){
         if(tag1 >= 'a' && tag1 <= 'z'){
