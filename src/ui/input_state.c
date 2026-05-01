@@ -30,6 +30,12 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
     return (UserOperation){.type = UO_DO_COMMAND, .data = (void*)strdup(text)};
   }
   if(input_state->type == INPUT_STATE_TYPE_JUMP_TO_VISIBLE_TAG){
+     // Escape cancels the visible tag selection
+     if(key == '\e' || key == 0x1b){
+         input_state->type = INPUT_STATE_DEFAULT;
+         input_state->prefix_count = 0;
+         return (UserOperation){.type = UO_CANCEL_JUMP_TO_VISIBLE_TAG};
+     }
      if(input_state->prefix_count == 0){
           input_state->prefix_count++;
           input_state->key_buffer[0] = key;

@@ -2159,7 +2159,14 @@ static void handle_index_from_root(AppState *app) {
 static void handle_prepare_jump_to_visible_tag(AppState *app) {
     app->input_state->mark_and_show_visible_nodes = true;
     app->mark_id = -1;
+    dont_adjust_doc_view_by_current = true;
     log_debug("[handle_prepare_jump_to_visible_tag] Showing visible tag selection");
+}
+
+static void handle_cancel_jump_to_visible_tag(AppState *app) {
+    app->input_state->mark_and_show_visible_nodes = false;
+    dont_adjust_doc_view_by_current = true;
+    log_debug("[handle_cancel_jump_to_visible_tag] Cancelled visible tag selection");
 }
 
 static void handle_to_edit_history(AppState *app) {
@@ -3936,6 +3943,9 @@ void app_apply_event(AppState *app, UserOperation uo) {
         break;
     case UO_PREPARE_JUMP_TO_VISIBLE_TAG:
         handle_prepare_jump_to_visible_tag(app);
+        break;
+    case UO_CANCEL_JUMP_TO_VISIBLE_TAG:
+        handle_cancel_jump_to_visible_tag(app);
         break;
 
     // edit history

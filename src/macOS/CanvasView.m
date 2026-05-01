@@ -633,7 +633,6 @@ replacementString:(NSString *)string
       && textLayer.frame.origin.y >= 0 
       && textLayer.frame.origin.y + textLayer.frame.size.height <= self.worldLayer.bounds.size.height
       && textLayer.frame.origin.x - default_text_points>= 0
-      && textLayer.frame.origin.x + textLayer.frame.size.width + default_text_points*2<= self.worldLayer.bounds.size.width
     ){
         app_state->mark_id++;
         CATextLayer *markLayer = [CATextLayer layer];
@@ -1459,10 +1458,11 @@ replacementString:(NSString *)string
             [self render_mindmap];
         }];
         return;
-
     }
 
-    dont_adjust_doc_view_by_current = false;
+    if(app_state->input_state->type != INPUT_STATE_TYPE_JUMP_TO_VISIBLE_TAG) {
+        dont_adjust_doc_view_by_current = false;
+    }
 
     // F1: toggle between system cursor and custom-drawn cursor
     if (event.keyCode == 103 || [characters isEqualToString:[NSString stringWithCharacters:(const unichar[]){ NSF11FunctionKey } length:1]]) {
@@ -1521,6 +1521,8 @@ replacementString:(NSString *)string
                 UserOperation uo = input_convert(app_state->input_state, key, 0, NULL, NO);
                 app_apply_event(app_state, uo);
                 if(app_state->input_state->type != INPUT_STATE_PREFIX
+                    && app_state->input_state->type != INPUT_STATE_TYPE_JUMP_TO_VISIBLE_TAG
+                    && uo.type != UO_CANCEL_JUMP_TO_VISIBLE_TAG
                     && uo.type != UO_VIEW_HALF_SCREEN_LEFT 
                     && uo.type != UO_VIEW_HALF_SCREEN_RIGHT){
                     dont_adjust_doc_view_by_current = false;
