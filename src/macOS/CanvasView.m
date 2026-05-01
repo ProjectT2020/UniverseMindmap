@@ -808,6 +808,10 @@ replacementString:(NSString *)string
         }];
         logd("Layout: view size (%.2f, %.2f), viewOrigon (%.2f, %.2f)", view_w, view_h, self.viewOrigon.x, self.viewOrigon.y);
     }
+    // Re-render after frame change (zoom, resize, etc.)
+    [self performWithoutImplicitAnimation:^{
+        [self render_mindmap];
+    }];
 }
 
 - (void)viewDidMoveToWindow {
@@ -1188,33 +1192,6 @@ replacementString:(NSString *)string
     BOOL isCommandDown = (event.modifierFlags & NSEventModifierFlagCommand) != 0;
     BOOL isOptionDown = (event.modifierFlags & NSEventModifierFlagOption) != 0;
     if(isFnDown && isControlDown ){
-        if(event.keyCode == 119){
-            [self snapWindowToRightHalf];
-            [self layout];
-            return;
-        }
-        if(event.keyCode == 115){
-            [self snapWindowToLeftHalf];
-            [self layout];
-            return;
-        }
-        if(event.keyCode == 116){
-            [self snapWindowToTopHalf];
-            [self layout];
-            return;
-        }
-        if(event.keyCode == 121){
-            [self snapWindowToBottomHalf];
-            return;
-        }
-        if(key == 'f' || event.keyCode == 3){
-            [self.window performZoom:nil];
-            [self layout];
-            [self performWithoutImplicitAnimation:^{
-                [self render_mindmap];
-            }];
-            return;
-        }
     }
     // Control + Command + arrows: window snapping (alias for Fn+Ctrl+arrows)
     if(isFnDown && isControlDown && isCommandDown && !isOptionDown){

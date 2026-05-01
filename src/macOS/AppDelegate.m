@@ -198,6 +198,92 @@ OSStatus HotKeyHandler(EventHandlerCallRef nextHandler,
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
     [self registerHotKey];
+    [self setupMainMenu];
+}
+
+- (void)setupMainMenu {
+    NSString *appName = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
+
+    NSMenu *mainMenu = [[NSMenu alloc] init];
+
+    // ── App Menu ──
+    NSMenuItem *appMenuItem = [mainMenu addItemWithTitle:@"" action:NULL keyEquivalent:@""];
+    NSMenu *appMenu = [[NSMenu alloc] init];
+    [appMenu addItemWithTitle:[NSString stringWithFormat:@"About %@", appName]
+                       action:@selector(orderFrontStandardAboutPanel:)
+                keyEquivalent:@""];
+    [appMenu addItem:[NSMenuItem separatorItem]];
+    [appMenu addItemWithTitle:[NSString stringWithFormat:@"Hide %@", appName]
+                       action:@selector(hide:)
+                keyEquivalent:@"h"];
+    NSMenuItem *hideOthersItem = [appMenu addItemWithTitle:@"Hide Others"
+                                                    action:@selector(hideOtherApplications:)
+                                             keyEquivalent:@"h"];
+    [hideOthersItem setKeyEquivalentModifierMask:NSEventModifierFlagCommand | NSEventModifierFlagOption];
+    [appMenu addItemWithTitle:@"Show All"
+                       action:@selector(unhideAllApplications:)
+                keyEquivalent:@""];
+    [appMenu addItem:[NSMenuItem separatorItem]];
+    [appMenu addItemWithTitle:[NSString stringWithFormat:@"Quit %@", appName]
+                       action:@selector(terminate:)
+                keyEquivalent:@"q"];
+    appMenuItem.submenu = appMenu;
+
+    // ── File Menu ──
+    NSMenuItem *fileMenuItem = [mainMenu addItemWithTitle:@"File" action:NULL keyEquivalent:@""];
+    NSMenu *fileMenu = [[NSMenu alloc] init];
+    [fileMenu addItemWithTitle:@"Close Window"
+                        action:@selector(performClose:)
+                 keyEquivalent:@"w"];
+    fileMenuItem.submenu = fileMenu;
+
+    // ── Edit Menu ──
+    NSMenuItem *editMenuItem = [mainMenu addItemWithTitle:@"Edit" action:NULL keyEquivalent:@""];
+    NSMenu *editMenu = [[NSMenu alloc] init];
+    [editMenu addItemWithTitle:@"Undo" action:@selector(undo:) keyEquivalent:@"z"];
+    [editMenu addItemWithTitle:@"Redo" action:@selector(redo:) keyEquivalent:@"Z"];
+    [editMenu addItem:[NSMenuItem separatorItem]];
+    [editMenu addItemWithTitle:@"Cut" action:@selector(cut:) keyEquivalent:@"x"];
+    [editMenu addItemWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
+    [editMenu addItemWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
+    [editMenu addItemWithTitle:@"Delete" action:@selector(delete:) keyEquivalent:@""];
+    [editMenu addItemWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
+    editMenuItem.submenu = editMenu;
+
+    // ── Window Menu ──
+    NSMenuItem *windowMenuItem = [mainMenu addItemWithTitle:@"Window" action:NULL keyEquivalent:@""];
+    NSMenu *windowMenu = [[NSMenu alloc] init];
+    [windowMenu addItemWithTitle:@"Minimize"
+                          action:@selector(performMiniaturize:)
+                   keyEquivalent:@"m"];
+    [windowMenu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *centerItem = [windowMenu addItemWithTitle:@"Center"
+                                                   action:@selector(centerWindow:)
+                                            keyEquivalent:@""];
+    centerItem.target = self;
+
+    [windowMenu addItemWithTitle:@"Bring All to Front"
+                          action:@selector(arrangeInFront:)
+                   keyEquivalent:@""];
+
+    windowMenuItem.submenu = windowMenu;
+    [NSApp setWindowsMenu:windowMenu];
+
+    // ── Help Menu ──
+    NSMenuItem *helpMenuItem = [mainMenu addItemWithTitle:@"Help" action:NULL keyEquivalent:@""];
+    NSMenu *helpMenu = [[NSMenu alloc] init];
+    [helpMenu addItemWithTitle:[NSString stringWithFormat:@"%@ Help", appName]
+                        action:@selector(showHelp:)
+                 keyEquivalent:@"?"];
+    helpMenuItem.submenu = helpMenu;
+
+    [NSApp setMainMenu:mainMenu];
+}
+
+- (IBAction)centerWindow:(id)sender {
+    (void)sender;
+    [self.window center];
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {

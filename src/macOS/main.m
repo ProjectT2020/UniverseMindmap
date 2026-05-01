@@ -18,37 +18,6 @@
 
 extern AppState* app_state;
 
-NSMenu * buildMenu() {
-    NSMenu *mainMenu = [[NSMenu alloc] initWithTitle:@"MainMenu"];
-
-    NSMenu *windowMenu = [[NSMenu alloc] initWithTitle:@"Window"];
-        NSMenuItem *minimizeItem = [[NSMenuItem alloc] initWithTitle:@"Minimize" action:@selector(performMiniaturize:) keyEquivalent:@"m"];
-        [windowMenu addItem:minimizeItem];
-    NSMenuItem *windowMenuItem = [[NSMenuItem alloc] initWithTitle:@"Window" action:nil keyEquivalent:@""];
-    [windowMenuItem setSubmenu:windowMenu];
-    [mainMenu addItem:windowMenuItem];
-
-    NSMenu *helpMenu = [[NSMenu alloc] initWithTitle:@"Help"];
-        NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:@"About" action:nil keyEquivalent:@""];
-        [helpMenu addItem:aboutItem];
-
-
-    NSMenuItem *editMenuItem = [[NSMenuItem alloc] initWithTitle:@"Edit" action:nil keyEquivalent:@""];
-    NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
-    
-    NSMenuItem *pasteItem = [[NSMenuItem alloc] initWithTitle:@"Paste" 
-                                                       action:@selector(paste:) 
-                                                keyEquivalent:@"v"];
-    [editMenu addItem:pasteItem];
-    [editMenuItem setSubmenu:editMenu];
-    [mainMenu addItem:editMenuItem];
-
-    NSMenuItem *helpMenuItem = [[NSMenuItem alloc] initWithTitle:@"Help" action:nil keyEquivalent:@""];
-    [helpMenuItem setSubmenu:helpMenu];
-    [mainMenu addItem:helpMenuItem];
-
-    return mainMenu;
-}
 int main(int argc, char *const*argv) {
 
     static struct option long_options[] = {
@@ -105,9 +74,6 @@ int main(int argc, char *const*argv) {
 
     @autoreleasepool {
         NSApplication *app = [NSApplication sharedApplication];
-
-        NSMenu *mainMenu = buildMenu();
-        [NSApp setMainMenu:mainMenu];
 
         AppDelegate *delegate = [AppDelegate new];
         app.delegate = delegate;
