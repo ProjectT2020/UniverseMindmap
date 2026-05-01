@@ -54,7 +54,8 @@ char* canvas_view_get_search_query(void *view){
     textView.textColor = [NSColor whiteColor];
     textView.string = @"/";
     textView.hidden = NO;
-    textView.frame = CGRectMake(0, 0, view_w, default_base_points);
+    NSSize textSize = [textView.string sizeWithAttributes:@{NSFontAttributeName: default_font()}];
+    textView.frame = CGRectMake(0, 0, textSize.width + default_text_points, default_base_points);
     [v layout];
     [v.window makeFirstResponder:textView];
     return NULL;
@@ -69,10 +70,39 @@ char* canvas_view_get_search_backward_query(void *view){
     textView.textColor = [NSColor whiteColor];
     textView.string = @"?";
     textView.hidden = NO;
-    textView.frame = CGRectMake(0, 0, view_w, default_base_points);
+    NSSize textSize = [textView.string sizeWithAttributes:@{NSFontAttributeName: default_font()}];
+    textView.frame = CGRectMake(0, 0, textSize.width + default_text_points, default_base_points);
     [v layout];
     [v.window makeFirstResponder:textView];
     return NULL;
+}
+
+void canvas_view_info_message(void *view){
+    CanvasView *v = (__bridge CanvasView *)view;
+    if(app_state->info_message && strlen(app_state->info_message) > 0){
+        NSString *text = [NSString stringWithUTF8String:app_state->info_message];
+        NSSize textSize = [text sizeWithAttributes:@{NSFontAttributeName: default_font()}];
+        CGFloat pad = default_text_points * 2;
+        CGFloat layerW = textSize.width;
+        CGFloat layerX = v.bounds.size.width - layerW - pad;
+
+        // Remove old layer, create fresh one — never reuse, avoids stale content flash
+        [v.infoMessageLayer removeFromSuperlayer];
+        CATextLayer *newLayer = [CATextLayer layer];
+        newLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor;
+        newLayer.fontSize = default_text_points;
+        newLayer.font = default_font();
+        newLayer.alignmentMode = kCAAlignmentRight;
+        newLayer.foregroundColor = [NSColor whiteColor].CGColor;
+        newLayer.backgroundColor = [NSColor colorWithCalibratedWhite:0.0 alpha:0.85].CGColor;
+        newLayer.frame = CGRectMake(layerX, 0, layerW, default_base_points);
+        newLayer.string = text;
+        newLayer.opacity = 1.0;
+        [v.layer addSublayer:newLayer];
+        v.infoMessageLayer = newLayer;
+    }else{
+        [v hideInfoMessage];
+    }
 }
 
 TreeNode canvas_view_get_viewport_bottommost_sibling(void *ui_ctx, TreeOverlay *ov, TreeNode current) {
@@ -238,6 +268,11 @@ double text_field_display_width(TreeNode node){
 
 @implementation CanvasView
 
+- (void)hideInfoMessage {
+    [self.infoMessageLayer removeFromSuperlayer];
+    self.infoMessageLayer = nil;
+}
+
 - (double)mindmap_x2canvas_x:(double)mindmap_x {
     return mindmap_x  - self.viewOrigon.x;
 }
@@ -273,6 +308,15 @@ replacementString:(NSString *)string
             textView.frame = NSMakeRect(textView.frame.origin.x, textView.frame.origin.y,
                         newWidth + default_text_points / 4.0, textView.frame.size.height);
         }
+    }
+    // Resize text view as user types in search / backward / command modes
+    if(app_state->input_state->type == INPUT_STATE_TYPE_SEARCH_QUERY
+    || app_state->input_state->type == INPUT_STATE_TYPE_SEARCH_BACKWARD_QUERY
+    || app_state->input_state->type == INPUT_STATE_TYPE_GET_COMMAND){
+        NSString *newString = [textView.string stringByReplacingCharactersInRange:range withString:string];
+        CGFloat newWidth = measure_text(newString).width;
+        textView.frame = NSMakeRect(textView.frame.origin.x, textView.frame.origin.y,
+            newWidth + default_text_points, textView.frame.size.height);
     }
     if ([string isEqualToString:@"\n"] || [string isEqualToString:@"\t"]) {
         [textView.window makeFirstResponder:self];
@@ -380,6 +424,20 @@ replacementString:(NSString *)string
         self.infoLayer.frame = CGRectMake(0, 12, self.bounds.size.width, 1); // height set dynamically in updateInfoView
         self.infoLayer.hidden = !debuging;
         [self.layer addSublayer:self.infoLayer];
+
+        // Info message layer — bottom, right-aligned, always visible (opacity toggled, no hidden/visible flash)
+        self.infoMessageLayer = [CATextLayer layer];
+        self.infoMessageLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor;
+        self.infoMessageLayer.fontSize = default_text_points;
+        self.infoMessageLayer.font = default_font();
+        self.infoMessageLayer.alignmentMode = kCAAlignmentRight;
+        self.infoMessageLayer.foregroundColor = [NSColor whiteColor].CGColor;
+        self.infoMessageLayer.backgroundColor = [NSColor clearColor].CGColor;
+        self.infoMessageLayer.string = @"";
+        self.infoMessageLayer.frame = CGRectMake(0, 0,
+            self.bounds.size.width, default_base_points);
+        [self hideInfoMessage];
+        [self.layer addSublayer:self.infoMessageLayer];
 
         _latestMouseViewPoint = CGPointMake(CGRectGetMidX(frameRect), CGRectGetMidY(frameRect));
         _viewOrigon = CGPointZero;
@@ -996,6 +1054,7 @@ replacementString:(NSString *)string
 
 - (void)mouseDown:(NSEvent *)event {
     log_debug("mouseDown: %p, x: %.2f, y: %.2f", event, event.locationInWindow.x, event.locationInWindow.y);
+    [self hideInfoMessage];
     self.lastMouse = [self convertPoint:event.locationInWindow fromView:nil];
     self.lastWorldPosition = self.viewOrigon;
     [self updateInfoView];
@@ -1008,6 +1067,7 @@ replacementString:(NSString *)string
 // }
 - (void)rightMouseDown:(NSEvent *)event {
     log_debug("rightMouseDown: %p, x: %.2f, y: %.2f", event, event.locationInWindow.x, event.locationInWindow.y);
+    [self hideInfoMessage];
     self.lastMouse = [self convertPoint:event.locationInWindow fromView:nil];
     self.lastWorldPosition = self.viewOrigon;
     [self updateInfoView];
@@ -1037,6 +1097,7 @@ replacementString:(NSString *)string
 
 // Mouse navigation buttons: back (button 3) = ^O, forward (button 4) = ^I
 - (void)otherMouseDown:(NSEvent *)event {
+    [self hideInfoMessage];
     if (event.buttonNumber == 3 || event.buttonNumber == 4) {
         app_state->input_state->type = INPUT_STATE_DEFAULT;
         char key = (event.buttonNumber == 3) ? 'o' : 'i';
@@ -1051,6 +1112,7 @@ replacementString:(NSString *)string
 }
 
 - (void)scrollWheel:(NSEvent *)event {
+    [self hideInfoMessage];
     dont_adjust_doc_view_by_current = true;
 
     CGFloat dx = event.scrollingDeltaX;
@@ -1078,6 +1140,7 @@ replacementString:(NSString *)string
 
 - (void)mouseUp:(NSEvent *)event {
     log_debug("mouseUp: %p, x: %.2f, y: %.2f, clickCount: %ld", event, event.locationInWindow.x, event.locationInWindow.y, (long)event.clickCount);
+    [self hideInfoMessage];
 
     // Double-click on titlebar zone → toggle zoom (maximize / restore)
     // fullSizeContentView 下系统不自动处理，需手动路由
@@ -1207,6 +1270,8 @@ replacementString:(NSString *)string
 
 - (void)keyDown:(NSEvent *)event {
     log_debug("keyDown: %p, x: %.2f, y: %.2f", event, event.locationInWindow.x, event.locationInWindow.y);
+    // Hide info message on any keyboard input; a new message may be shown during processing
+    [self hideInfoMessage];
     NSString *characters = event.charactersIgnoringModifiers;
     unichar key = [characters characterAtIndex:0];
     BOOL isControlDown = (event.modifierFlags & NSEventModifierFlagControl) != 0;
@@ -1422,7 +1487,8 @@ replacementString:(NSString *)string
                     self.bottomCommandTextView.textColor = [NSColor whiteColor];
                     self.bottomCommandTextView.string = @":";
                     self.bottomCommandTextView.hidden = NO;
-                    self.bottomCommandTextView.frame = CGRectMake(0, 0, self.bounds.size.width, default_base_points);
+                    NSSize cmdSize = [self.bottomCommandTextView.string sizeWithAttributes:@{NSFontAttributeName: default_font()}];
+                    self.bottomCommandTextView.frame = CGRectMake(0, 0, cmdSize.width + default_text_points, default_base_points);
                     [self.window makeFirstResponder:self.bottomCommandTextView];
                 }else if(app_state->input_state->type != INPUT_STATE_TYPE_SEARCH_QUERY
                     && app_state->input_state->type != INPUT_STATE_TYPE_SEARCH_BACKWARD_QUERY){

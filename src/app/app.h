@@ -52,6 +52,7 @@ typedef struct AppState {
     void (*ui_view_half_screen_left)(void *ui_ctx);
     void (*ui_reset_layout)(void *ui_ctx);
     void (*ui_render)(void *ui_ctx); 
+    void (*ui_info_message)(void *ui_ctx); 
     char* (*ui_get_search_query)(void *ui_ctx); 
     char* (*ui_get_search_backward_query)(void *ui_ctx); 
     TreeNode (*ui_get_viewport_topmost_sibling)(void *ui_ctx, TreeOverlay *ov, TreeNode current);

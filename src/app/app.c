@@ -61,6 +61,10 @@ void app_ui_info_set_message(AppState *app, const char *message, ...) {
     vsnprintf(buffer, sizeof(buffer), message, args);
     app->info_message = strdup(buffer);
     va_end(args);
+    // Notify the UI layer to show the message
+    if(app->ui_info_message){
+        app->ui_info_message(app->ui_ctx);
+    }
 }
 
 TreeNode app_metadata_key_node(Operate *operate, const char *key) {
@@ -2648,7 +2652,6 @@ void handle_do_search(AppState *app, UserOperation uo){
         log_info("No more matches found for query '%s'", query);
     }else{
         update_current_with_history(app, result);
-        app_ui_info_set_message(app, "Found match for '%s' at node id=%lu", query, tree_node_id(result));
         log_info("Found match for query '%s' at node id=%lu", query, tree_node_id(result));
     }
     free(query);
@@ -2673,7 +2676,6 @@ void handle_do_search_backward(AppState *app, UserOperation uo){
         log_info("No previous matches found for query '%s'", query);
     }else{
         update_current_with_history(app, result);
-        app_ui_info_set_message(app, "Found match for '%s' at node id=%lu", query, tree_node_id(result));
         log_info("Found match for query '%s' at node id=%lu", query, tree_node_id(result));
     }
     free(query);
@@ -2692,7 +2694,6 @@ void handle_search_next(AppState *app){
         log_info("No more matches found for query '%s'", operate->search_query);
     }else{
         update_current_with_history(app, result);
-        app_ui_info_set_message(app, "Found match for '%s' at node id=%lu", operate->search_query, tree_node_id(result));
         log_info("Found match for query '%s' at node id=%lu", operate->search_query, tree_node_id(result));
     }
 }
@@ -2710,7 +2711,6 @@ void handle_search_prev(AppState *app){
         log_info("No previous matches found for query '%s'", operate->search_query);
     }else{
         update_current_with_history(app, result);
-        app_ui_info_set_message(app, "Found match for '%s' at node id=%lu", operate->search_query, tree_node_id(result));
         log_info("Found match for query '%s' at node id=%lu", operate->search_query, tree_node_id(result));
     }
 }

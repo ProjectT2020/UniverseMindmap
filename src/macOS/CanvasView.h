@@ -27,6 +27,7 @@ void canvas_view_current_left(void *ui_ctx);
 void canvas_view_current_right(void *ui_ctx);
 void canvas_view_half_screen_right(void *ui_ctx);
 void canvas_view_half_screen_left(void *ui_ctx);
+void canvas_view_info_message(void *ui_ctx);
 
 CGColorRef randomVividColor() ;
 NSFont *default_font() ;
@@ -64,6 +65,7 @@ double text_field_display_width(TreeNode node);
 @property(nonatomic) CGFloat zoomScale;
 @property(nonatomic) CGRect currentNodeFrame;
 @property(nonatomic, strong) TextInputView *bottomCommandTextView;
+@property(nonatomic, strong) CATextLayer *infoMessageLayer;
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *visibleNodeInfos;
 // @property(nonatomic) CFTimeInterval lastFPSUpdateTime;
 @end
