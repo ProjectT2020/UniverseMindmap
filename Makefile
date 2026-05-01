@@ -44,11 +44,12 @@ MACOS_SOURCES := \
 # Object files
 CORE_OBJS := $(CORE_SRCS:.c=.o)
 APP_OBJS := $(APP_SRCS:.c=.o)
-DEPS := $(CORE_OBJS:.o=.d) $(APP_OBJS:.o=.d)
+MACOS_OBJS := $(MACOS_SOURCES:.m=.o)
+DEPS := $(CORE_OBJS:.o=.d) $(APP_OBJS:.o=.d) $(MACOS_OBJS:.o=.d)
 
 TARGET := bin/universe-mindmap
 
-.PHONY: all clean run help install uninstall loc
+.PHONY: all clean run help install uninstall loc build app icon
 
 all: $(TARGET)
 
@@ -57,17 +58,20 @@ $(TARGET): $(CORE_OBJS) $(APP_OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 	@echo "✓ compilation success: $(TARGET)"
 
-mac_um: $(MACOS_SOURCES) $(CORE_OBJS)
-	mkdir -p UniverseMindmap.app/Contents/MacOS
-	$(CC) $(CFLAGS) $^ -o UniverseMindmap.app/Contents/MacOS/UniverseMindmap $(LDFLAGS) -framework Cocoa -framework QuartzCore -framework Carbon
-	@echo "✓ compilation success: UniverseMindmap.app"
-
+# Incremental compilation for .c sources
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-build: $(MACOS_SOURCES) $(CORE_OBJS)
+# Incremental compilation for .m (Objective-C) sources
+%.o: %.m
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# macOS GUI binary (incremental build)
+build: $(MACOS_OBJS) $(CORE_OBJS)
 	mkdir -p build
-	$(CC) $(CFLAGS) $^ -o build/UniverseMindmap -framework Cocoa -framework QuartzCore -framework Carbon
+	$(CC) $(CFLAGS) $(MACOS_OBJS) $(CORE_OBJS) -o build/UniverseMindmap \
+		$(LDFLAGS) -framework Cocoa -framework QuartzCore -framework Carbon
+	@echo "✓ compilation success: build/UniverseMindmap"
 
 APP_NAME = UniverseMindmap
 APP_DIR = dist/$(APP_NAME).app
@@ -86,6 +90,7 @@ app: build icon
 	cp build/$(APP_NAME) $(MACOS)/
 	cp resources/Info.plist $(CONTENTS)/
 	cp $(ICON) $(RESOURCES)/
+	@echo "✓ app bundle: $(APP_DIR)"
 
 icon:
 	rm -rf $(ICONSET) $(ICON)
@@ -124,19 +129,22 @@ loc:
 	@find src tests -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 wc -l
 	
 clean:
-	rm -f $(CORE_OBJS) $(APP_OBJS) $(TARGET)
-	rm -f $(CORE_OBJS:.o=.d) $(APP_OBJS:.o=.d)
+	rm -f $(CORE_OBJS) $(APP_OBJS) $(MACOS_OBJS) $(TARGET)
+	rm -f $(CORE_OBJS:.o=.d) $(APP_OBJS:.o=.d) $(MACOS_OBJS:.o=.d)
+	rm -rf build/UniverseMindmap build/icon
 
 help:
 	@echo "universe-mindmap - Build System"
 	@echo ""
 	@echo "Targets:"
-	@echo "  make all      Build the application (default)"
-	@echo "  make run      Build and run the application"
+	@echo "  make all      Build TUI binary (default)"
+	@echo "  make build    Build macOS GUI binary (incremental)"
+	@echo "  make app      Build macOS .app bundle"
+	@echo "  make run      Build and run TUI binary"
 	@echo "  make clean    Remove build artifacts"
 	@echo "  make help     Show this help"
-	@echo "  make install  Install the application"
-	@echo "  make uninstall Uninstall the application"
+	@echo "  make install  Install TUI binary"
+	@echo "  make uninstall Uninstall TUI binary"
 	@echo "  make loc      Count lines of code in C source/header files"
 
 -include $(DEPS)

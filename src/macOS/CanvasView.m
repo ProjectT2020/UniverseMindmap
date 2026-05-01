@@ -347,22 +347,22 @@ replacementString:(NSString *)string
         };
         [self addSubview:self.bottomCommandTextView positioned:NSWindowAbove relativeTo:nil];
 
-        _worldLayer = [CALayer layer];
-        _worldLayer.anchorPoint = CGPointZero;
+        self.worldLayer = [CALayer layer];
+        self.worldLayer.anchorPoint = CGPointZero;
         // _worldLayer.backgroundColor = [NSColor lightGrayColor].CGColor;
-        _worldLayer.frame = self.bounds;
+        self.worldLayer.frame = self.bounds;
         [self.layer addSublayer:_worldLayer];
 
-        _infoLayer = [CATextLayer layer];
-        _infoLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor;
-        _infoLayer.fontSize = 14;
-        _infoLayer.alignmentMode = kCAAlignmentLeft;
-        _infoLayer.foregroundColor = [NSColor colorWithCalibratedWhite:0.08 alpha:0.5].CGColor;
-        _infoLayer.backgroundColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.20].CGColor;
-        _infoLayer.string = @"Info --";
-        _infoLayer.frame = CGRectMake(0, 12, self.bounds.size.width, 7*_infoLayer.fontSize);
-        _infoLayer.hidden = !debuging;
-        [self.layer addSublayer:_infoLayer];
+        self.infoLayer = [CATextLayer layer];
+        self.infoLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor;
+        self.infoLayer.fontSize = 14;
+        self.infoLayer.alignmentMode = kCAAlignmentLeft;
+        self.infoLayer.foregroundColor = [NSColor colorWithCalibratedWhite:0.08 alpha:0.5].CGColor;
+        self.infoLayer.backgroundColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.20].CGColor;
+        self.infoLayer.string = @"Info --";
+        self.infoLayer.frame = CGRectMake(0, 12, self.bounds.size.width, 1); // height set dynamically in updateInfoView
+        self.infoLayer.hidden = !debuging;
+        [self.layer addSublayer:self.infoLayer];
 
         _latestMouseViewPoint = CGPointMake(CGRectGetMidX(frameRect), CGRectGetMidY(frameRect));
         _viewOrigon = CGPointZero;
@@ -817,6 +817,17 @@ replacementString:(NSString *)string
         self.window.acceptsMouseMovedEvents = YES;
         [self updateLayerScales];
         [self.window makeFirstResponder:self];
+
+        // Get native traffic light buttons and hide until hover
+        self.closeButton = [self.window standardWindowButton:NSWindowCloseButton];
+        self.minimizeButton = [self.window standardWindowButton:NSWindowMiniaturizeButton];
+        self.zoomButton = [self.window standardWindowButton:NSWindowZoomButton];
+        // Delay initial hide to ensure buttons are created (lazy on macOS 11+)
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.closeButton.alphaValue = 0;
+            self.minimizeButton.alphaValue = 0;
+            self.zoomButton.alphaValue = 0;
+        });
     } else {
     }
 }
@@ -826,21 +837,57 @@ replacementString:(NSString *)string
     [self updateLayerScales];
 }
 
+/// Compute titlebar zone height from the actual traffic light button position.
+/// More accurate than hardcoded constants; adapts to different macOS versions and window styles.
+- (CGFloat)titlebarZoneHeight {
+    NSRect buttonFrame = [self convertRect:self.closeButton.frame fromView:self.closeButton.superview];
+    CGFloat buttonBottom = NSMinY(buttonFrame);
+    CGFloat height = NSHeight(self.bounds) - buttonBottom;
+    logd("titlebarZoneFromButton: frame=(%.1f,%.1f,%.1f,%.1f) bottom=%.1f viewH=%.1f -> %.1f",
+            buttonFrame.origin.x, buttonFrame.origin.y,
+            buttonFrame.size.width, buttonFrame.size.height,
+            buttonBottom, NSHeight(self.bounds), height);
+    return height + 4;
+}
+
 - (void)updateTrackingAreas {
     [super updateTrackingAreas];
 
-    if (self.trackingArea != nil) {
-        [self removeTrackingArea:self.trackingArea];
+    if (self.titlebarTrackingArea != nil) {
+        [self removeTrackingArea:self.titlebarTrackingArea];
     }
+    CGFloat titlebarHeight = [self titlebarZoneHeight];
+    CGFloat zoneY0 = NSHeight(self.bounds) - titlebarHeight;
+    self.titlebarTrackingArea = [[NSTrackingArea alloc] initWithRect:NSMakeRect(0, zoneY0, NSWidth(self.bounds), titlebarHeight)
+                                                             options:NSTrackingMouseEnteredAndExited |
+                                                                     NSTrackingActiveInKeyWindow
+                                                               owner:self
+                                                            userInfo:nil];
+    [self addTrackingArea:self.titlebarTrackingArea];
+    logd("titlebar tracking area set to (0, %.2f, %.2f, %.2f)", self.titlebarTrackingArea.rect.origin.y, self.titlebarTrackingArea.rect.size.width, self.titlebarTrackingArea.rect.size.height);
+}
 
-    self.trackingArea = [[NSTrackingArea alloc] initWithRect:self.bounds
-                                                     options:NSTrackingMouseEnteredAndExited |
-                                                             NSTrackingMouseMoved |
-                                                             NSTrackingActiveInKeyWindow |
-                                                             NSTrackingInVisibleRect
-                                                       owner:self
-                                                    userInfo:nil];
-    [self addTrackingArea:self.trackingArea];
+- (void)mouseEntered:(NSEvent *)event {
+    logd("mouseEntered: trackingArea=%p titlebar=%p", event.trackingArea, self.titlebarTrackingArea);
+    if (event.trackingArea == self.titlebarTrackingArea && self.closeButton) {
+        logd("  -> show titlebar buttons (viewY=%.1f zone=[%.0f-%.0f])",
+             [self convertPoint:event.locationInWindow fromView:nil].y,
+             self.titlebarTrackingArea.rect.origin.y,
+             self.titlebarTrackingArea.rect.origin.y + self.titlebarTrackingArea.rect.size.height);
+        self.closeButton.alphaValue = 1;
+        self.minimizeButton.alphaValue = 1;
+        self.zoomButton.alphaValue = 1;
+    }
+}
+
+- (void)mouseExited:(NSEvent *)event {
+    logd("mouseExited: trackingArea=%p titlebar=%p", event.trackingArea, self.titlebarTrackingArea);
+    if (event.trackingArea == self.titlebarTrackingArea && self.closeButton) {
+        logd("  -> hide titlebar buttons");
+        self.closeButton.alphaValue = 0;
+        self.minimizeButton.alphaValue = 0;
+        self.zoomButton.alphaValue = 0;
+    }
 }
 
 - (void)updateLayerScales {
@@ -883,12 +930,14 @@ replacementString:(NSString *)string
     NSPoint locationInDocWorld = CGPointMake(
         locationInDocView.x + self.viewOrigon.x, 
     locationInDocView.y + self.viewOrigon.y);
+    CGFloat th = [self titlebarZoneHeight];
     self.infoLayer.string = [NSString stringWithFormat:@"window(%.2f, %.2f)|view(%.2f, %.2f)|layer(%.2f, %.2f)|worldLayer(%.2f, %.2f)\n"
     "docview(%.2f, %.2f)|docworld(%.2f, %.2f)\n"
     "worldLayer pos(%.2f, %.2f) zoomScale: %.2f anchor(%.2f, %.2f)\n"
     "viewOrigon(%.2f, %.2f) viewH(%.2f) viewW(%.2f)\n"
     "#layers %d; canvas frame(%.2f, %.2f, %.2f, %.2f)\n"
-    "currentNode: %s|Frame(%.2f, %.2f, %.2f, %.2f)\n",
+    "currentNode: %s|Frame(%.2f, %.2f, %.2f, %.2f)\n"
+    "titlebar: zoneY=[%.0f-%.0f] mouseViewY=%.2f %s a=%.2f\n",
 
     locationInWindow.x, locationInWindow.y,
      locationInView.x, locationInView.y, 
@@ -904,8 +953,15 @@ replacementString:(NSString *)string
     self.worldLayer.frame.size.width, self.worldLayer.frame.size.height,
     tree_node_text(app_state->current_node),
     self.currentNodeFrame.origin.x, self.currentNodeFrame.origin.y,
-    self.currentNodeFrame.size.width, self.currentNodeFrame.size.height
+    self.currentNodeFrame.size.width, self.currentNodeFrame.size.height,
+    NSHeight(self.bounds) - th, NSHeight(self.bounds),
+    locationInView.y,
+    (locationInView.y >= self.bounds.size.height - th) ? "IN" : "OUT",
+    self.closeButton ? self.closeButton.alphaValue : -1
      ];
+    // Auto-fit infoLayer height to content
+    NSInteger lineCount = [self.infoLayer.string length] - [[self.infoLayer.string stringByReplacingOccurrencesOfString:@"\n" withString:@""] length];
+    self.infoLayer.frame = CGRectMake(0, 12, self.bounds.size.width, (lineCount + 3) * self.infoLayer.fontSize);
 }
 
 - (void)mouseMoved:(NSEvent *)event {
@@ -995,7 +1051,23 @@ replacementString:(NSString *)string
 }
 
 - (void)mouseUp:(NSEvent *)event {
-    log_debug("mouseUp: %p, x: %.2f, y: %.2f", event, event.locationInWindow.x, event.locationInWindow.y);
+    log_debug("mouseUp: %p, x: %.2f, y: %.2f, clickCount: %ld", event, event.locationInWindow.x, event.locationInWindow.y, (long)event.clickCount);
+
+    // Double-click on titlebar zone → toggle zoom (maximize / restore)
+    // fullSizeContentView 下系统不自动处理，需手动路由
+    if (event.clickCount == 2) {
+        NSPoint loc = [self convertPoint:event.locationInWindow fromView:nil];
+        CGFloat th = [self titlebarZoneHeight];
+        if (loc.y >= NSHeight(self.bounds) - th) {
+            [self.window zoom:nil];
+            [self layout];
+            [self performWithoutImplicitAnimation:^{
+                [self render_mindmap];
+            }];
+            return;
+        }
+    }
+
     if(self.isDragging) {
         self.isDragging = NO;// drag end
     }else{
@@ -1106,15 +1178,6 @@ replacementString:(NSString *)string
         [self render_mindmap];
     }];
 }
--(void)snapWindowToFullScreen{
-    NSWindow *window = self.window;
-    NSRect screenRect = [NSScreen mainScreen].visibleFrame;
-    [window setFrame:screenRect display:YES animate:NO];
-    [self layout];
-    [self performWithoutImplicitAnimation:^{
-        [self render_mindmap];
-    }];
-}
 
 - (void)keyDown:(NSEvent *)event {
     log_debug("keyDown: %p, x: %.2f, y: %.2f", event, event.locationInWindow.x, event.locationInWindow.y);
@@ -1145,7 +1208,11 @@ replacementString:(NSString *)string
             return;
         }
         if(key == 'f' || event.keyCode == 3){
-            [self snapWindowToFullScreen];
+            [self.window performZoom:nil];
+            [self layout];
+            [self performWithoutImplicitAnimation:^{
+                [self render_mindmap];
+            }];
             return;
         }
     }
