@@ -29,6 +29,7 @@
 static const char *APP_METADATA_NODE_NAME = ".metadata";
 static const char *RECYCLE_BIN_NAME = "recycle_bin";
 static const char *APP_META_BOOKMARK_NAME = "bookmarks";
+static const char *APP_META_HELP = "help";
 static const char *APP_META_CURRENT_TASK = "current_task";
 const char *APP_META_EDIT_HISTORY = "edit_history";
 static const char *APP_META_MULTI_TASKING = "multi_tasking";
@@ -2526,6 +2527,24 @@ static void handle_do_command(AppState *app) {
         case CMD_EXIT_SAVE:{
             app_save(app);
             app->running = 0;
+            break;
+        }
+        case CMD_HELP_TOPIC:{
+            if(cmd.args == NULL || strlen(cmd.args) == 0){
+                log_warn("help: missing topic argument");
+                break;
+            }
+            // Navigate: root → .meta → .metadata → help → {topic}
+            TreeNode help_node = app_metadata_key_node(app->operate, APP_META_HELP);
+            TreeNode topic_node = app_metadata_dict_keynode(app, help_node, cmd.args);
+            if(tree_node_is_null(topic_node)){
+                log_warn("help: topic '%s' not found", cmd.args);
+                app_ui_info_set_message(app, "Help topic '%s' not found", cmd.args);
+            }else{
+                update_current_with_history(app, topic_node);
+                log_info("help: jumped to topic '%s'", cmd.args);
+                app_ui_info_set_message(app, "Help: %s", cmd.args);
+            }
             break;
         }
         case CMD_RESET_LAYOUT:{

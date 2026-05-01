@@ -44,6 +44,7 @@ static const CmdMapping cmd_mapping[] = {
     {"unfold", CMD_UNFOLD_NODE},
     {"new task", CMD_NEW_TASK},
     {"hello", CMD_HELLO},
+    {"h", CMD_HELP_TOPIC, 1},
     {"wq", CMD_EXIT_SAVE},
     // Add more command mappings as needed
 
