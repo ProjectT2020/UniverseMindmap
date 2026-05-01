@@ -20,6 +20,8 @@ typedef struct {
         UO_MOVE_FOCUS_DOWN,
         UO_MOVE_FOCUS_PREV_SIBLING,
         UO_MOVE_FOCUS_NEXT_SIBLING,
+        UO_MOVE_FOCUS_NEXT_LINE,    // ↓ next leaf if current is leaf, else next sibling
+        UO_MOVE_FOCUS_PREVIOUS_LINE, // ↑ prev leaf if current is leaf, else prev sibling
         UO_MOVE_FOCUS_LEFT,
         UO_MOVE_FOCUS_RIGHT,
         UO_MOVE_FOCUS_BOTTOM,

@@ -398,9 +398,9 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
         case 124: // → // right
           return (UserOperation){.type = UO_MOVE_FOCUS_RIGHT};
         case 125: // ↓ // down
-          return (UserOperation){.type = UO_MOVE_FOCUS_DOWN};
+          return (UserOperation){.type = UO_MOVE_FOCUS_NEXT_LINE};
         case 126: // ↑ // up
-          return (UserOperation){.type = UO_MOVE_FOCUS_UP};
+          return (UserOperation){.type = UO_MOVE_FOCUS_PREVIOUS_LINE};
     // if(event.keyCode == 121 || event.keyCode == 116 || event.keyCode == 115 || event.keyCode == 119){
         case 116: // page up
           return (UserOperation){.type = UO_PREV_PAGE};

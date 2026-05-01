@@ -1362,6 +1362,130 @@ static void handle_move_focus_next_sibling(AppState *app) {
     }
 }
 
+static void handle_move_focus_prev_sibling(AppState *app) ;
+static void handle_move_focus_next_sibling(AppState *app) ;
+static void handle_move_focus_up(AppState *app) ;
+static void handle_move_focus_down(AppState *app) ;
+
+// Check if a node is a leaf (no visible children excluding .meta)
+static bool is_visible_leaf(TreeOverlay *ov, TreeNode node){
+    TreeNode child = tree_node_first_child(ov, node);
+    if(!tree_node_is_null(child) && strcmp(tree_node_text(child), ".meta") == 0){
+        child = tree_node_next_sibling(ov, child);
+    }
+    return tree_node_is_null(child);
+}
+
+// Find the next leaf node in depth-first tree order
+static TreeNode find_next_leaf(TreeOverlay *ov, TreeNode start){
+    // Walk up until we find a node with a next sibling, then DFS for leaf
+    TreeNode n = start;
+    while(!tree_node_is_null(n)){
+        TreeNode parent = tree_node_parent(ov, n);
+        TreeNode sib = tree_node_next_sibling(ov, n);
+        // Skip .meta sibling
+        if(!tree_node_is_null(sib) && strcmp(tree_node_text(sib), ".meta") == 0){
+            sib = tree_node_next_sibling(ov, sib);
+        }
+        if(!tree_node_is_null(sib)){
+            // Found a next sibling — now find the first leaf in its subtree
+            TreeNode cur = sib;
+            while(!tree_node_is_null(cur)){
+                if(is_visible_leaf(ov, cur)){
+                    return cur;
+                }
+                // Go into first visible child
+                TreeNode fc = tree_node_first_child(ov, cur);
+                if(!tree_node_is_null(fc) && strcmp(tree_node_text(fc), ".meta") == 0){
+                    fc = tree_node_next_sibling(ov, fc);
+                }
+                if(!tree_node_is_null(fc)){
+                    cur = fc;
+                }else{
+                    break; // shouldn't happen for non-leaf, but safety
+                }
+            }
+        }
+        n = parent;
+    }
+    return (TreeNode){.kind = TREE_NODE_NULL};
+}
+
+// Find the previous leaf node in depth-first tree order
+static TreeNode find_prev_leaf(TreeOverlay *ov, TreeNode start){
+    TreeNode n = start;
+    while(!tree_node_is_null(n)){
+        TreeNode parent = tree_node_parent(ov, n);
+        TreeNode sib = tree_node_prev_sibling(ov, n);
+        // Skip .meta sibling
+        if(!tree_node_is_null(sib) && strcmp(tree_node_text(sib), ".meta") == 0){
+            sib = tree_node_prev_sibling(ov, sib);
+        }
+        if(!tree_node_is_null(sib)){
+            // Found a previous sibling — now find the LAST leaf in its subtree
+            TreeNode cur = sib;
+            TreeNode lastLeaf = (TreeNode){.kind = TREE_NODE_NULL};
+            // Go deep into the rightmost child repeatedly, tracking the last leaf found
+            while(!tree_node_is_null(cur)){
+                if(is_visible_leaf(ov, cur)){
+                    lastLeaf = cur;
+                }
+                // Go to last visible child
+                TreeNode lc = tree_node_last_child(ov, cur);
+                if(!tree_node_is_null(lc) && strcmp(tree_node_text(lc), ".meta") == 0){
+                    lc = tree_node_prev_sibling(ov, lc);
+                }
+                if(!tree_node_is_null(lc)){
+                    cur = lc;
+                }else{
+                    break;
+                }
+            }
+            if(!tree_node_is_null(lastLeaf)){
+                return lastLeaf;
+            }
+        }
+        n = parent;
+    }
+    return (TreeNode){.kind = TREE_NODE_NULL};
+}
+
+static void handle_next_line(AppState *app) {
+    if(is_visible_leaf(app->tree_overlay, app->current_node)){
+        log_debug("[handle_next_line] current is leaf, finding next leaf");
+        TreeNode next = find_next_leaf(app->tree_overlay, app->current_node);
+        if(!tree_node_is_null(next)){
+            update_current_with_history(app, next);
+        }
+    }else{
+        TreeNode next = ui_next_visible_sibling(app, app->current_node);
+        if(!tree_node_is_null(next)){
+            update_current_with_history(app, next);
+        }else{
+            // Reached end of siblings — walk up like gj
+            handle_move_focus_down(app);
+        }
+    }
+}
+
+static void handle_previous_line(AppState *app) {
+    if(is_visible_leaf(app->tree_overlay, app->current_node)){
+        log_debug("[handle_previous_line] current is leaf, finding previous leaf");
+        TreeNode prev = find_prev_leaf(app->tree_overlay, app->current_node);
+        if(!tree_node_is_null(prev)){
+            update_current_with_history(app, prev);
+        }
+    }else{
+        TreeNode prev = ui_previous_visible_sibling(app, app->current_node);
+        if(!tree_node_is_null(prev)){
+            update_current_with_history(app, prev);
+        }else{
+            // Reached start of siblings — walk up like gk
+            handle_move_focus_up(app);
+        }
+    }
+}
+
 static void handle_move_focus_up(AppState *app) {
     TreeNode node = app->current_node;
     while(!tree_node_is_null(node) && 
@@ -3716,6 +3840,12 @@ void app_apply_event(AppState *app, UserOperation uo) {
         break;
     case UO_MOVE_FOCUS_NEXT_SIBLING:
         handle_move_focus_next_sibling(app);
+        break;
+    case UO_MOVE_FOCUS_NEXT_LINE:
+        handle_next_line(app);
+        break;
+    case UO_MOVE_FOCUS_PREVIOUS_LINE:
+        handle_previous_line(app);
         break;
     case UO_MOVE_FOCUS_UP:
         handle_move_focus_up(app);
