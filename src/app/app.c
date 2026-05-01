@@ -1883,6 +1883,7 @@ static void handle_jump_back(AppState *app) {
         log_info("Jump back stack is empty, cannot jump back");
         return;
     }
+    dont_adjust_doc_view_by_current = false;
     TreeNode current = app->current_node;
     stack_push(app->jump_forward_stack, (void*)(uintptr_t)tree_node_id(current));
 
@@ -1902,6 +1903,7 @@ static void handle_jump_forward(AppState *app) {
         log_info("Jump forward stack is empty, cannot jump forward");
         return;
     }
+    dont_adjust_doc_view_by_current = false;
     TreeNode current = app->current_node;
     stack_push(app->jump_back_stack, (void*)(uintptr_t)tree_node_id(current));
 

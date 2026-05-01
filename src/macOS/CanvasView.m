@@ -953,6 +953,21 @@ replacementString:(NSString *)string
     self.latestMouseViewPoint = p;
 }
 
+// Mouse navigation buttons: back (button 3) = ^O, forward (button 4) = ^I
+- (void)otherMouseDown:(NSEvent *)event {
+    if (event.buttonNumber == 3 || event.buttonNumber == 4) {
+        app_state->input_state->type = INPUT_STATE_DEFAULT;
+        char key = (event.buttonNumber == 3) ? 'o' : 'i';
+        UserOperation uo = input_convert(app_state->input_state, key, 0, NULL, YES);
+        if (uo.type != UO_NOP) {
+            app_apply_event(app_state, uo);
+        }
+        [self performWithoutImplicitAnimation:^{
+            [self render_mindmap];
+        }];
+    }
+}
+
 - (void)scrollWheel:(NSEvent *)event {
     dont_adjust_doc_view_by_current = true;
 
