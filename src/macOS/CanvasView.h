@@ -27,6 +27,8 @@ void canvas_view_current_left(void *ui_ctx);
 void canvas_view_current_right(void *ui_ctx);
 void canvas_view_half_screen_right(void *ui_ctx);
 void canvas_view_half_screen_left(void *ui_ctx);
+void canvas_view_down(void *ui_ctx, int lines);
+void canvas_view_up(void *ui_ctx, int lines);
 void canvas_view_info_message(void *ui_ctx);
 
 CGColorRef randomVividColor() ;

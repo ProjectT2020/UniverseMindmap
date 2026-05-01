@@ -186,6 +186,8 @@ OSStatus HotKeyHandler(EventHandlerCallRef nextHandler,
     app_state->ui_place_current_right = canvas_view_current_right;
     app_state->ui_view_half_screen_right = canvas_view_half_screen_right;
     app_state->ui_view_half_screen_left = canvas_view_half_screen_left;
+    app_state->ui_view_down = canvas_view_down;
+    app_state->ui_view_up = canvas_view_up;
     app_state->ui_info_message = canvas_view_info_message;
 
     [self.window setFrameAutosaveName:@"MainWindow"];

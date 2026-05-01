@@ -206,6 +206,16 @@ void canvas_view_half_screen_left(void *ui_ctx){
     CGFloat halfW = screenRect.size.width / 2.0;
     v.viewOrigon = CGPointMake(v.viewOrigon.x - halfW, v.viewOrigon.y);
 }
+void canvas_view_down(void *ui_ctx, int lines){
+    CanvasView *v = (__bridge CanvasView *)ui_ctx;
+    dont_adjust_doc_view_by_current = true;
+    v.viewOrigon = CGPointMake(v.viewOrigon.x, v.viewOrigon.y + lines * default_base_points);
+}
+void canvas_view_up(void *ui_ctx, int lines){
+    CanvasView *v = (__bridge CanvasView *)ui_ctx;
+    dont_adjust_doc_view_by_current = true;
+    v.viewOrigon = CGPointMake(v.viewOrigon.x, v.viewOrigon.y - lines * default_base_points);
+}
 
 CGColorRef randomVividColor() {
     // Pick a vivid (high-saturation) background color
@@ -1369,6 +1379,8 @@ replacementString:(NSString *)string
             case 'u':
             case 'f':
             case 'b':
+            case 'e':
+            case 'y':
             case 'o':
             case 'i':
             {
