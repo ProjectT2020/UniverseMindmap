@@ -252,6 +252,11 @@ replacementString:(NSString *)string
     if(range.location < 1 && app_state->input_state->type != INPUT_STATE_TYPE_GET_NAME
     && app_state->input_state->type != INPUT_STATE_TYPE_GET_NAME_INSERT_FRONT
     && app_state->input_state->type != INPUT_STATE_TYPE_GET_NAME_INSERT_END){
+        // Cmd+Backspace deletes from position 0: strip query text but keep the "/" or "?" prefix
+        if (range.location == 0 && range.length > 1) {
+            textView.string = [textView.string substringToIndex:1];
+            [textView setSelectedRange:NSMakeRange(1, 0)];
+        }
         return NO;
     }
     // editing node text
