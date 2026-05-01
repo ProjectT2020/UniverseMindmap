@@ -2518,6 +2518,16 @@ static void handle_do_command(AppState *app) {
             handle_add_new_task(app);
             break;
         }
+        case CMD_HELLO:{
+            log_info("hello command mode");
+            app_ui_info_set_message(app, "hello command mode");
+            break;
+        }
+        case CMD_EXIT_SAVE:{
+            app_save(app);
+            app->running = 0;
+            break;
+        }
         case CMD_RESET_LAYOUT:{
             log_debug("handle_command_mode: Resetting tree layout");
             app->ui_reset_layout(app->ui_ctx);

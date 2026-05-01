@@ -22,6 +22,8 @@ typedef enum {
     CMD_FOLD_NODE,
     CMD_UNFOLD_NODE,
     CMD_NEW_TASK,
+    CMD_HELLO,
+    CMD_EXIT_SAVE,
     // Add more command types as needed
 
     // shell
