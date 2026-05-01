@@ -71,6 +71,19 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
         input_state->type = INPUT_STATE_DEFAULT; // reset to default after getting command
         return uo;
     }
+    if(input_state->type == INPUT_STATE_TYPE_SEARCH_QUERY){
+        if(app->search_query != NULL && strlen(app->search_query) > 0){
+            UserOperation uo = {.type = UO_DO_SEARCH, .data = strdup(app->search_query)};
+            free(app->search_query);
+            app->search_query = NULL;
+            input_state->type = INPUT_STATE_DEFAULT;
+            return uo;
+        }
+        free(app->search_query);
+        app->search_query = NULL;
+        input_state->type = INPUT_STATE_DEFAULT;
+        return (UserOperation){.type = UO_NOP};
+    }
     if(input_state->type == INPUT_STATE_TYPE_GET_COMMAND){
         UserOperation uo = {.type = UO_DO_COMMAND};
         input_state->type = INPUT_STATE_DEFAULT; // reset to default after getting command
@@ -529,13 +542,18 @@ char* ui_get_command(void *ui_ctx){
 // char* ui_get_name(void *ui_get_name_ctx, char *terminated_character){
 char* ui_get_search_query(void *ui_ctx){
     UiContext *ctx = (UiContext *)ui_ctx;
+    AppState *app = ctx->app;
     // search mode uses fixed position (bottom of screen)
     int cursor_x = 0;
     int cursor_y = ctx ? ctx->height - 1 : 0;
     char terminated_character = 0;
     char *query = edit_mode(ctx, "/", "", 0, cursor_x, cursor_y, &terminated_character);
     log_debug("ui_get_search_query: got query '%s'\n", query);
-    return query;
+    if(app->search_query != NULL){
+        free(app->search_query);
+    }
+    app->search_query = strdup(query);
+    return NULL; // return value discarded by handle_search
 }
 
 char *ui_get_search_backward_query(void *ui_ctx){
