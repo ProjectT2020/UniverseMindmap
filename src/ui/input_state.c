@@ -267,6 +267,10 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
             return (UserOperation){.type = UO_JOIN_SIBLING_AS_CHILD};
         case 'G':
             return (UserOperation){.type = UO_MOVE_FOCUS_BOTTOM};
+        case 'H':
+            return (UserOperation){.type = UO_MOVE_FOCUS_VIEWPORT_TOP};
+        case 'L':
+            return (UserOperation){.type = UO_MOVE_FOCUS_VIEWPORT_BOTTOM};
         case 'h':
             return (UserOperation){.type = UO_MOVE_FOCUS_LEFT};
         case 'j':

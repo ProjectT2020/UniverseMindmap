@@ -16,6 +16,8 @@ static inline void logd(const char *fmt, ...) {
 void canvas_view_render(void *view);
 void canvas_view_center_view_on_current(void *view);
 char* canvas_view_get_search_query(void *view);
+TreeNode canvas_view_get_viewport_topmost_sibling(void *ui_ctx, TreeOverlay *ov, TreeNode current);
+TreeNode canvas_view_get_viewport_bottommost_sibling(void *ui_ctx, TreeOverlay *ov, TreeNode current);
 void canvas_view_prev_page(void *ui_ctx);
 void canvas_view_next_page(void *ui_ctx);
 void canvas_view_next_half_page(void *ui_ctx);
@@ -56,6 +58,7 @@ double text_field_display_width(TreeNode node);
 @property(nonatomic) CGPoint viewOrigon;
 @property(nonatomic) CGFloat zoomScale;
 @property(nonatomic) CGRect currentNodeFrame;
-@property(nonatomic) TextInputView *bottomCommandTextView;
+@property(nonatomic, strong) TextInputView *bottomCommandTextView;
+@property(nonatomic, strong) NSMutableArray<NSDictionary *> *visibleNodeInfos;
 // @property(nonatomic) CFTimeInterval lastFPSUpdateTime;
 @end

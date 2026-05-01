@@ -54,6 +54,8 @@ typedef struct AppState {
     void (*ui_render)(void *ui_ctx); 
     char* (*ui_get_search_query)(void *ui_ctx); 
     char* (*ui_get_search_backward_query)(void *ui_ctx); 
+    TreeNode (*ui_get_viewport_topmost_sibling)(void *ui_ctx, TreeOverlay *ov, TreeNode current);
+    TreeNode (*ui_get_viewport_bottommost_sibling)(void *ui_ctx, TreeOverlay *ov, TreeNode current);
 
     
     uint64_t selected_node_id;  // current focused node ID

@@ -379,6 +379,12 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
         case 'G':
             input.type = UO_MOVE_FOCUS_BOTTOM;
             break;
+        case 'H':
+            input.type = UO_MOVE_FOCUS_VIEWPORT_TOP;
+            break;
+        case 'L':
+            input.type = UO_MOVE_FOCUS_VIEWPORT_BOTTOM;
+            break;
         case 'Z': {
             log_debug("Detected 'Z' input, checking next character for exit command\n");
             char next1 = next_char();

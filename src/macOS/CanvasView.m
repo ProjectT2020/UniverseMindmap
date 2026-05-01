@@ -59,6 +59,49 @@ char* canvas_view_get_search_query(void *view){
     [v.window makeFirstResponder:textView];
     return NULL;
 }
+
+TreeNode canvas_view_get_viewport_bottommost_sibling(void *ui_ctx, TreeOverlay *ov, TreeNode current) {
+    CanvasView *v = (__bridge CanvasView *)ui_ctx;
+    TreeNode parent = tree_node_parent(ov, current);
+    uint64_t parent_id = tree_node_id(parent);
+    uint64_t best_id = 0;
+    double best_y = -INFINITY;
+    for (NSDictionary *info in v.visibleNodeInfos) {
+        if ([info[@"parent"] unsignedLongLongValue] == parent_id) {
+            double y = [info[@"y"] doubleValue];
+            if (y > best_y) {
+                best_y = y;
+                best_id = [info[@"id"] unsignedLongLongValue];
+            }
+        }
+    }
+    if (best_id != 0) {
+        return tree_find_by_id(ov, best_id);
+    }
+    return (TreeNode){.kind = TREE_NODE_NULL};
+}
+
+TreeNode canvas_view_get_viewport_topmost_sibling(void *ui_ctx, TreeOverlay *ov, TreeNode current) {
+    CanvasView *v = (__bridge CanvasView *)ui_ctx;
+    TreeNode parent = tree_node_parent(ov, current);
+    uint64_t parent_id = tree_node_id(parent);
+    uint64_t best_id = 0;
+    double best_y = INFINITY;
+    for (NSDictionary *info in v.visibleNodeInfos) {
+        if ([info[@"parent"] unsignedLongLongValue] == parent_id) {
+            double y = [info[@"y"] doubleValue];
+            if (y < best_y) {
+                best_y = y;
+                best_id = [info[@"id"] unsignedLongLongValue];
+            }
+        }
+    }
+    if (best_id != 0) {
+        return tree_find_by_id(ov, best_id);
+    }
+    return (TreeNode){.kind = TREE_NODE_NULL};
+}
+
 void canvas_view_prev_page(void *ui_ctx){
     CanvasView *v = (__bridge CanvasView *)ui_ctx;
     dont_adjust_doc_view_by_current = true;
@@ -466,6 +509,20 @@ replacementString:(NSString *)string
         [self mindmap_x2canvas_x:origin_x],
         frame_y,
         textSize.width > 2 ? textSize.width : 2, default_base_points);
+    // collect visible node for L-key viewport navigation
+    // Convert frame_y (canvas/Cocoa coords, Y↑) to doc coords (Y↓):
+    //   doc_center = view_h - (frame_y + base_points/2) + viewOrigon.y
+    // Bottommost visible = max doc_center.
+    static const double VIEWPORT_PADDING = 2.0; // exclude nodes too close to viewport edge
+    if (frame_y >= VIEWPORT_PADDING && frame_y + default_base_points <= view_h - VIEWPORT_PADDING) {
+        double doc_y = self.worldLayer.bounds.size.height - (frame_y + default_base_points / 2.0) + self.viewOrigon.y;
+        TreeNode p = tree_node_parent(state->tree_overlay, node);
+        [self.visibleNodeInfos addObject:@{
+            @"id": @(tree_node_id(node)),
+            @"parent": @(tree_node_id(p)),
+            @"y": @(doc_y)
+        }];
+    }
     if(app_state->input_state->mark_and_show_visible_nodes 
       && textLayer.frame.origin.y >= 0 
       && textLayer.frame.origin.y + textLayer.frame.size.height <= self.worldLayer.bounds.size.height
@@ -692,7 +749,8 @@ replacementString:(NSString *)string
     }
 
 
-    // render 
+    // render
+    self.visibleNodeInfos = [NSMutableArray array];
     if(app_state->input_state->mark_and_show_visible_nodes){
         app_state->mark_id = -1;
     }

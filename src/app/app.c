@@ -1542,6 +1542,30 @@ static void handle_move_focus_bottom(AppState *app) {
     log_debug("[handle_move_focus_bottom] After: current_node id=%lu", tree_node_id(app->current_node));
 }
 
+static void handle_move_focus_viewport_top(AppState *app) {
+    log_debug("[handle_move_focus_viewport_top] Moving focus to topmost visible sibling");
+    if (app->ui_get_viewport_topmost_sibling) {
+        TreeNode target = app->ui_get_viewport_topmost_sibling(app->ui_ctx, app->tree_overlay, app->current_node);
+        if (!tree_node_is_null(target) && tree_node_id(target) != tree_node_id(app->current_node)) {
+            dont_adjust_doc_view_by_current = false;
+            update_current_with_history(app, target);
+        }
+    }
+    log_debug("[handle_move_focus_viewport_top] After: current_node id=%lu", tree_node_id(app->current_node));
+}
+
+static void handle_move_focus_viewport_bottom(AppState *app) {
+    log_debug("[handle_move_focus_viewport_bottom] Moving focus to bottommost visible sibling");
+    if (app->ui_get_viewport_bottommost_sibling) {
+        TreeNode target = app->ui_get_viewport_bottommost_sibling(app->ui_ctx, app->tree_overlay, app->current_node);
+        if (!tree_node_is_null(target) && tree_node_id(target) != tree_node_id(app->current_node)) {
+            dont_adjust_doc_view_by_current = false;
+            update_current_with_history(app, target);
+        }
+    }
+    log_debug("[handle_move_focus_viewport_bottom] After: current_node id=%lu", tree_node_id(app->current_node));
+}
+
 static void do_move_fold_begin(AppState *app, TreeNode node) {
     if(tree_node_is_null(node)){
         log_info("Node is null, cannot move focus to fold begin");
@@ -3683,6 +3707,12 @@ void app_apply_event(AppState *app, UserOperation uo) {
     case UO_MOVE_FOCUS_BOTTOM:
         handle_move_focus_bottom(app);
         break; 
+    case UO_MOVE_FOCUS_VIEWPORT_TOP:
+        handle_move_focus_viewport_top(app);
+        break;
+    case UO_MOVE_FOCUS_VIEWPORT_BOTTOM:
+        handle_move_focus_viewport_bottom(app);
+        break;
     case UO_MOVE_FOLD_BEGIN:
         handle_move_fold_begin(app);
         break;
