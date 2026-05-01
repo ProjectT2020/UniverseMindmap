@@ -81,530 +81,143 @@ UserOperation ui_poll_user_input(UiContext *ctx) {
     memset(&input, 0, sizeof(input));  // Initialize to zero
     char c = next_char();
     log_debug("[ui] User input: %c (0x%02x)", (c >= 32 && c <= 126) ? c : ' ', c);
-    switch(c) {
-        case 'h':
-            input.type = UO_MOVE_FOCUS_LEFT;
-            break;
-        case 'j':
-            input.type = UO_MOVE_FOCUS_NEXT_SIBLING;
-            break;
-        case 'k':
-            input.type = UO_MOVE_FOCUS_PREV_SIBLING;
-            break;
-        case 'l':
-            input.type = UO_MOVE_FOCUS_RIGHT;
-            break;
-        case 'e':
-            input.type = UO_MOVE_FOCUS_LAST_CHILD;
-            break;
-        case 'm': {
-            char next = next_char();
-            if('a' <= next && next <= 'z' || 'A' <= next && next <= 'Z' || '0' <= next && next <= '9'){
-                input.type = UO_MARK_NODE;
-                input.param1 = next;
-            }else if(next == '['){
-                input.type = UO_MARK_AS_DEFINITION;
-            }else if(next == ']'){
-                input.type = UO_UNMARK_AS_DEFINITION;
-            }else {
-                log_info("invalid mark character: %c\n", next);
-            }
-            break;
-        }
-        case '\'':{
-            char next = next_char();
-            if('a' <= next && next <= 'z' || 'A' <= next && next <= 'Z' || '0' <= next && next <= '9'){
-                input.type = UO_JUMP_TO_MARK;
-                input.param1 = next;
-            } else {
-                log_info("invalid mark character for jump: %c\n", next);
-            }
-            break;
-        }
-        case '^':
-            input.type = UO_MOVE_FOCUS_TERM_ROOT;  // first ancestor with [] definition
-            break;
-        case '$':
-            input.type = UO_MOVE_FOCUS_MOST_LEFT_UPPER;
-            break;
-        case 'E':
-            input.type = UO_MOVE_FOCUS_MOST_LEFT_LOWER;
-            break;
-        case '0':
-            input.type = UO_MOVE_FOCUS_HOME;
-            break;
-        case 'J':
-            input.type = UO_JOIN_SIBLING_AS_CHILD;
-            break;
-        case 'x': 
-            input.type = UO_CUT_NODE;
-            break;
-        case 'z': {
-            char next = next_char();
-            switch(next) {
-            case 'c':
-                input.type = UO_FOLD_NODE;      // zc fold current node
-                break;
-            case 'r':
-                input.type = UO_REDUCE_FOLDING;    // zr expand more levels (reveal more)
-                break;
-            case 'o':
-                input.type = UO_UNFOLD_NODE;    // zo expand current node
-                break;
-            case 'm':
-                input.type = UO_FOLD_MORE;  // zm fold more (show less)
-                break;
-            case 'M':
-                input.type = UO_FOLD_LEVEL_1;  // zM fold to level 1
-                break;
-            case 'R':
-                input.type = UO_EXPAND_ALL_DESCENDANTS; // zR expand all descendants except .meta
-                break;
-            case 'T':
-                input.type = UO_INDEX_FROM_ROOT;
-                break;
-            case 0x14: // Ctrl+T
-                // input.type = ;
-                break;
-            case '.':
-                input.type = UO_CENTER_VIEW;    // z. center current node
-                break;
-            case 's':
-                input.type = UO_PLACE_LEFT;    // zs current node on the left
-                break;
-            case 'e':
-                input.type = UO_PLACE_RIGHT;    // zs current node on the left
-                break;
-            case 'H':
-                input.type = UO_VIEW_HALF_SCREEN_LEFT;
-                break;
-            case 'L':
-                input.type = UO_VIEW_HALF_SCREEN_RIGHT;
-                break;
-            default:
-                log_info("Unknown input sequence: z%c\n", next);
-            }
-            break;
-        }
-        case 'a':
-            input.type = UO_EDIT_NODE_END;
-            break;
-        case '\t': // TAB or ^I 
-            if(ctx->last_input.type == UO_JUMP_BACK || ctx->last_input.type == UO_JUMP_FORWARD){
-                input.type = UO_JUMP_FORWARD;
-            } else {
-                input.type = UO_ADD_CHILD_TO_TAIL;
-            }
-            break;
-        case 'o':
-            input.type = UO_ADD_SIBLING_BELOW;
-            break;
-        case ' ':
-            input.type = UO_HIT_SPACE;
-            break;
-        case '\n':
-            input.type = UO_HIT_CTRL_J;
-            break;
-        case '\r':
-            input.type = UO_HIT_ENTER;
-            break;
-        case 'A':
-            input.type = UO_ADD_CHILD_TO_TAIL;
-            break;
-        case 'O':
-            input.type = UO_ADD_SIBLING_ABOVE;
-            break;
-        case 's':
-            input.type = UO_EDIT_NODE;
-            break;
-        case 'i':
-            input.type = UO_EDIT_NODE_FRONT;
-            break;
-        case 'I':
-            input.type = UO_INSERT_PARENT_LEFT;
-            break;
-        case 'D':
-            input.type = UO_DELETE_SUBTREE;
-            break;
-        case 'd': {
-            char next = next_char();
-            if (next == 'd') {
-                input.type = UO_CUT_SUBTREE;
-            } else {
-                log_info("Unknown input sequence: d%c\n", next);
-            }
-            break;
-        }
-        case 'K':
-            input.type = UO_KEYWORD_LOOKUP;
-            break;
-            
-        case 'u':
-            input.type = UO_UNDO;
-            break;
-        case 18: // Ctrl+R - redo
-            input.type = UO_REDO;
-            break;
-        case '/':
-            input.type = UO_SEARCH;
-            break;
-        case 'n': {
-            // Check if 'n' means search next (only in some contexts)
-            // For now, treat 'n' as search next if user has a query
-            input.type = UO_SEARCH_NEXT;
-            break;
-        }
-        case 'N': {
-            input.type = UO_SEARCH_PREV;
-            break;
-        }
-        case '*':
-            input.type = UO_SEARCH_NEXT_EXACT;
-            break;
-        case '#':
-            input.type = UO_SEARCH_PREV_EXACT;
-            break;
-        case 15: // Ctrl+O - jump back
-            input.type = UO_JUMP_BACK;
-            break;
-        case 0x1d: // Ctrl+]
-            input.type = UO_JUMP_KEYWORD_GLOBAL_DEFINITION;
-            break;
-        case 'y':
-            input.type = UO_COPY_SUBTREE;
-            break;
-        case 'p':
-            input.type = UO_PASTE_SIBLING_BELOW;
-            break;
-        case 'P':
-            input.type = UO_PASTE_SIBLING_ABOVE;
-            break;
-        case 'T': {
-            app->show_child_position = true;
-            ui_render(ctx);
-            char next = next_char();
-            int pos = 0;
-            if('0' <= next && next <= '9'){
-                pos = next - '0';
-            } else if('a' <= next && next <= 'z'){
-                pos = next - 'a' + 10; // 10-35 for a-z
-            } else if('A' <= next && next <= 'Z'){
-                pos = next - 'A' + 36; // 36-61 for A-Z
-            } else {
-                log_info("Unknown input sequence: f%c\n", next);
-                break;
-            }
-            input.type = UO_MOVE_TO_CHILD_POSITION;
-            input.param1 = pos;
-            break;
-        }
-        case 't':{
-            app->input_state->mark_and_show_visible_nodes = true;
-            ctx->mark_page = 0;
-            ctx->mark = 0;
-            ctx->app->fix_view = true;
-            ui_render(ctx);
-            
-            char next = next_char();
-            if('a' <= next && next <= 'z'){
-                char next2 = next_char();
-                if('a' <= next2 && next2 <= 'z'){
-                    input.type = UO_JUMP_TO_UI_NODE_MARK;
-                    input.param1 = (next - 'a') * 26 + (next2 - 'a');
-                } else {
-                    log_info("Unknown input sequence: f%c%c\n", next, next2);
-                }
-            } else {
-                app->input_state->mark_and_show_visible_nodes = false;
-                ctx->app->fix_view = false;
-                log_info("Unknown input sequence: f%c\n", next);
-            }
 
-            break;
-        }
-        case 'v':
-            input.type = UO_VI_EDIT_NODE;
-            break;
-        case 0x07: // Ctrl+G
-            ctx->show_ancestors_in_one_line = !ctx->show_ancestors_in_one_line;
-            break;
-        case 'g': {
-            char next = next_char();
-            switch(next) {
-                case 'p':
-                    input.type = UO_PASTE_AS_CHILD;
-                    break;
-                case '0':
-                    input.type = UO_MOVE_FOCUS_HOME;
-                    break;
-                case 'c':
-                    input.type = UO_MOVE_FOCUS_CURRENT_TASK;
-                    break;
-                case 'j':
-                    input.type = UO_MOVE_FOCUS_DOWN;
-                    break;
-                case 'k':
-                    input.type = UO_MOVE_FOCUS_UP;
-                    break;
-                case 'g':
-                    input.type = UO_MOVE_FOCUS_TOP;
-                    break;
-                case 'J':
-                    input.type = UO_JOIN_TEXT_WITHOUT_SPACE;
-                    break;
-                case 'y':
-                    input.type = UO_COPY_TEXT_TO_SYSTEM_CLIPBOARD;
-                    break;
-                case 'Y':
-                    input.type = UO_COPY_SUBTREE_TO_SYSTEM_CLIPBOARD;
-                    break;
-                case 'd':
-                    input.type = UO_JUMP_KEYWORD_DEFINITION;
-                    break;
-                case 'D':
-                    input.type = UO_OPEN_RESOURCE_LINK;
-                    break;
-                case 'f':
-                    input.type = UO_OPEN_RESOURCE_LINK;
-                    break;
-                case ';':
-                    input.type = UO_TO_EDIT_HISTORY;
-                    break;
-                default:
-                    log_info("Unknown input sequence: g%c\n", next);
-                    break;
-            }
-            break;
-        }
-        case 'G':
-            input.type = UO_MOVE_FOCUS_BOTTOM;
-            break;
-        case 'H':
-            input.type = UO_MOVE_FOCUS_VIEWPORT_TOP;
-            break;
-        case 'L':
-            input.type = UO_MOVE_FOCUS_VIEWPORT_BOTTOM;
-            break;
-        case 'Z': {
-            log_debug("Detected 'Z' input, checking next character for exit command\n");
-            char next1 = next_char();
-            if (next1 == 'Q') {
-                input.type = UO_EXIT_NO_SAVE;
-            } else if (next1 == 'Z') {
-                input.type = UO_EXIT_SAVE;
-            } else {
-                log_info("Unknown input sequence: Z%c\n", next1);
-            }
-            break;
-        }
-        case '\\':{
-            char next1 = next_char();
-            if(('0' <= next1 && next1 <= '9') || ('a' <= next1 && next1 <= 'z') || ('A' <= next1 && next1 <= 'Z')){
-                char next2 = next_char();
-                if(('0' <= next2 && next2 <= '9') || ('a' <= next2 && next2 <= 'z') || ('A' <= next2 && next2 <= 'Z')){
-                    char two_char_command[3] = {next1, next2, '\0'};
-                    // new task
-                    if(strcmp("nt", two_char_command) == 0){ 
-                        // input.type = UO_NEW_TASK; // todo; we've already have :new task
-                    } 
-                    // current task
-                    // we have gc for curent task
-                    // create child task
-                    else if(strcmp("ct", two_char_command) == 0){
-                        input.type = UO_CREATE_CHILD_TASK;
-                    }
-                    // create sibling task
-                    else if(strcmp("st", two_char_command) == 0){
-                        input.type = UO_CREATE_SIBLING_TASK;
-                    }
-                    // finish task
-                    else if(strcmp("ft", two_char_command) == 0){ 
-                         input.type = UO_FINISH_TASK;
-                    } 
-                    // as current task
-                    else if(strcmp("ac", two_char_command) == 0){ 
-                        input.type = UO_AS_CURRENT_TASK;
-                    }
-                    else if(strcmp("cd", two_char_command) == 0){
-                        input.type = UO_CURRENT_TASK_JUMP_DEFINITION;
-                    }
-                    else {
-                        log_info("Unknown two-character command: \\%s\n", two_char_command);
-                    }
-                }
-            }
-            break;
-        }
-        case '{':
-            input.type = UO_MOVE_PARENT_PREV_SIBLING_BEGIN;
-            break;
-        case '}':
-            input.type = UO_MOVE_PARENT_NEXT_SIBLING_END;
-            break;
-        case '[':{
-            char next = next_char();
-            switch(next){
-                case '[':
-                    input.type = UO_MOVE_PARENT_PREV_SIBLING_BEGIN;
-                    break;
-                case '{':
-                    input.type = UO_MOVE_FOLD_BEGIN;
-                    break;
-                case ']':
-                    input.type = UO_MOVE_PARENT_PREV_SIBLING_END;
-                    break;
-                case 't':
-                    input.type = UO_PREV_TASK;
-                    break;
-                default:
-                    log_info("Unknown input sequence: [%c\n", next);
-                    break;
-            }
-            break;
-        }
-        case ']':{
-            char next = next_char();
-            switch(next){
-                case ']':
-                    input.type = UO_MOVE_PARENT_NEXT_SIBLING_END;
-                    break;
-                case '}':
-                    input.type = UO_MOVE_FOLD_END;
-                    break;
-                case '[':
-                    input.type = UO_MOVE_PARENT_NEXT_SIBLING_BEGIN;
-                    break;
-                case 't':
-                    input.type = UO_NEXT_TASK;
-                    break;
-                default:
-                    log_info("Unknown input sequence: ]%c\n", next);
-                    break;
-            }
-            break;
-        }
-        case ':':
-            input.type = UO_COMMAND_MODE;
-            break;
-        case '"':{
-            char next1 = next_char();
-            if(next1 == '*'){
-                char next2 = next_char();
-                if(next2 == 'y'){
-                    char next3 = next_char();
-                    if(next3 == 'j'){
-                        input.type = UO_COPY_SUBTREE_TO_SYSTEM_CLIPBOARD;
-                    } 
-                }else if(next2 == 'p'){
-                    input.type = UO_PASTE_FROM_SYSTEM_CLIPBOARD_AS_SIBLINGS;
-                }
-            }
-            break;
-        }
-        case '?':
-            input.type = UO_SEARCH_BACKWARD;
-            break;
-        case 0x5: // Ctrl+E
-            input.type = UO_VIEW_DOWN;
-            break;
-        case 0x19: // Ctrl+Y
-            input.type = UO_VIEW_UP;
-            break;
-        case 0x06: // Ctrl+F
-            input.type = UO_NEXT_PAGE;
-            break;
-        case 0x02: // Ctrl+B
-            input.type = UO_PREV_PAGE;
-            break;
-        case 0x1b: // ESC key
-        {
-            char c1 = next_char();
-            switch(c1) {
-                case '[':{
-                    char buf[16];
-                    int i = 0;
-                    while(i < (int)sizeof(buf) - 1){
-                        char c2 = next_char();
-                        if(c2 == '~' || (c2 >= 'A' && c2 <= 'D')){
-                            buf[i] = c2;
-                            buf[i + 1] = '\0';
-                            break;
-                        }
-                        buf[i++] = (char)c2;
-                    }
-                    // directional keys and delete key
-                    if(strcmp(buf, "A") == 0){
-                        input.type = UO_MOVE_FOCUS_UP;
-                        break;
-                    }
-                    if(strcmp(buf, "B") == 0){
-                        input.type = UO_MOVE_FOCUS_DOWN;
-                        break;
-                    }
-                    if(strcmp(buf, "C") == 0){
-                        input.type = UO_MOVE_FOCUS_RIGHT;
-                        break;
-                    }
-                    if(strcmp(buf, "D") == 0){
-                        input.type = UO_MOVE_FOCUS_LEFT;
-                        break;
-                    }
-                    if(strcmp(buf, "3~") == 0){// Delete key
-                        input.type = UO_CUT_SUBTREE; // treat Delete key as cut subtree
-                        break;
-                    }
-                    if(strcmp(buf, "6~") == 0) {// Page Down key
-                        input.type = UO_NEXT_PAGE;
-                        break;
-                    }
-                    if(strcmp(buf, "5~") == 0) {// Page Up key
-                        input.type = UO_PREV_PAGE;
-                        break;
-                    }
-                    // Alt+F12
-                    if(strcmp(buf, "31~") == 0 
-                    || strcmp(buf, "18;2~") == 0 /* extended key mode */){
-                        input.type = UO_SHELL_ABOVE;
-                        break;
-                    }
-                    if(strcmp(buf, "200~") == 0){
-                        in_paste = true;
-                        log_debug("Detected start of paste sequence (200~), entering paste mode\n");
-                        break;
-                    }
-                    if(strcmp(buf, "201~") == 0){
-                        in_paste = false;
-                        log_debug("Detected end of paste sequence (201~), exiting paste mode\n");
-                        break;
-                    }
+    // terminal escape sequences (TTY-specific I/O)
+    if (c == 0x1b) {
+        char c1 = next_char();
+        if (c1 == '[') {
+            char buf[16];
+            int i = 0;
+            while(i < (int)sizeof(buf) - 1){
+                char c2 = next_char();
+                if(c2 == '~' || (c2 >= 'A' && c2 <= 'D')){
+                    buf[i] = c2;
+                    buf[i + 1] = '\0';
                     break;
                 }
-                case 's': // Alt+s
-                    input.type = UO_SEARCH_ENGINE;
-                    break;
-                case 'o': // Alt+o
-                    input.type = UO_OPEN_RESOURCE_LINK;
-                    break;
-                case 'a':
-                    input.type = UO_ASK_AI;
-                    input.param1 = QUERY_SCOPE_CURRENT_NODE;
-                    break;
-                case 'A':
-                    input.type = UO_ASK_AI;
-                    input.param1 = QUERY_SCOPE_SUBTREE;
-                    break;
-                default:
-                    log_debug("Unknown escape sequence: ESC [ %c\n", c1);
-                    break;
+                buf[i++] = (char)c2;
             }
-            break;
+            if(strcmp(buf, "A") == 0)        { input.type = UO_MOVE_FOCUS_UP; }
+            else if(strcmp(buf, "B") == 0)   { input.type = UO_MOVE_FOCUS_DOWN; }
+            else if(strcmp(buf, "C") == 0)   { input.type = UO_MOVE_FOCUS_RIGHT; }
+            else if(strcmp(buf, "D") == 0)   { input.type = UO_MOVE_FOCUS_LEFT; }
+            else if(strcmp(buf, "3~") == 0)  { input.type = UO_CUT_SUBTREE; }
+            else if(strcmp(buf, "5~") == 0)  { input.type = UO_PREV_PAGE; }
+            else if(strcmp(buf, "6~") == 0)  { input.type = UO_NEXT_PAGE; }
+            else if(strcmp(buf, "31~") == 0 || strcmp(buf, "18;2~") == 0){ input.type = UO_SHELL_ABOVE; }
+            else if(strcmp(buf, "200~") == 0){ in_paste = true; }
+            else if(strcmp(buf, "201~") == 0){ in_paste = false; }
+        } else if (c1 == 's') {
+            input.type = UO_SEARCH_ENGINE;
+        } else if (c1 == 'o') {
+            input.type = UO_OPEN_RESOURCE_LINK;
+        } else if (c1 == 'a') {
+            input.type = UO_ASK_AI;
+            input.param1 = QUERY_SCOPE_CURRENT_NODE;
+        } else if (c1 == 'A') {
+            input.type = UO_ASK_AI;
+            input.param1 = QUERY_SCOPE_SUBTREE;
         }
-        default:
-            log_debug("Unknown input: %c\n", c);
-            input.type = UO_NOP;  // Set to NOP for unknown input
-            break;
+        ctx->last_input = input;
+        return input;
     }
-    ctx->last_input = input; // Update last input
+
+    // Ctrl+G: toggle show ancestors (TUI display setting)
+    if (c == 0x07) {
+        ctx->show_ancestors_in_one_line = !ctx->show_ancestors_in_one_line;
+        ctx->last_input = input;
+        return input;
+    }
+
+    // TUI clipboard (blocking inline terminal I/O)
+    if (c == '"') {
+        char next1 = next_char();
+        if(next1 == '*'){
+            char next2 = next_char();
+            if(next2 == 'y'){
+                char next3 = next_char();
+                if(next3 == 'j'){
+                    input.type = UO_COPY_SUBTREE_TO_SYSTEM_CLIPBOARD;
+                }
+            }else if(next2 == 'p'){
+                input.type = UO_PASTE_FROM_SYSTEM_CLIPBOARD_AS_SIBLINGS;
+            }
+        }
+        ctx->last_input = input;
+        return input;
+    }
+
+    // Tab / Ctrl+I disambiguation
+    if (c == '\t') {
+        if(ctx->last_input.type == UO_JUMP_BACK || ctx->last_input.type == UO_JUMP_FORWARD){
+            input = input_convert(input_state, 'i', 0, NULL, true);
+        } else {
+            input = input_convert(input_state, '\t', 0, NULL, false);
+        }
+        ctx->last_input = input;
+        return input;
+    }
+
+    // Newline (TUI-specific, keep separate from unified engine)
+    if (c == '\n') { input.type = UO_HIT_CTRL_J; ctx->last_input = input; return input; }
+    if (c == '\r') { input.type = UO_HIT_ENTER;  ctx->last_input = input; return input; }
+
+    // Ctrl keys (0x01-0x1A, except those handled above) → unified engine with isControlDown
+    if (c >= 0x01 && c <= 0x1A && c != 0x09) {
+        char key = 'a' + c - 1;
+        input = input_convert(input_state, key, 0, NULL, true);
+        ctx->last_input = input;
+        return input;
+    }
+
+    // TUI-specific: visible tag jump (blocking inline render + char reads)
+    if (c == 't') {
+        app->input_state->mark_and_show_visible_nodes = true;
+        ctx->mark_page = 0;
+        ctx->mark = 0;
+        ctx->app->fix_view = true;
+        ui_render(ctx);
+        char next = next_char();
+        if('a' <= next && next <= 'z'){
+            char next2 = next_char();
+            if('a' <= next2 && next2 <= 'z'){
+                input.type = UO_JUMP_TO_UI_NODE_MARK;
+                input.param1 = (next - 'a') * 26 + (next2 - 'a');
+            } else {
+                log_info("Unknown input sequence: f%c%c\n", next, next2);
+            }
+        } else {
+            app->input_state->mark_and_show_visible_nodes = false;
+            ctx->app->fix_view = false;
+            log_info("Unknown input sequence: f%c\n", next);
+        }
+        ctx->last_input = input;
+        return input;
+    }
+
+    // TUI-specific: child position (blocking inline render + char read)
+    if (c == 'T') {
+        app->show_child_position = true;
+        ui_render(ctx);
+        char next = next_char();
+        int pos = 0;
+        if('0' <= next && next <= '9')       { pos = next - '0'; }
+        else if('a' <= next && next <= 'z')  { pos = next - 'a' + 10; }
+        else if('A' <= next && next <= 'Z')  { pos = next - 'A' + 36; }
+        else {
+            log_info("Unknown input sequence: f%c\n", next);
+            ctx->last_input = input;
+            return input;
+        }
+        input.type = UO_MOVE_TO_CHILD_POSITION;
+        input.param1 = pos;
+        ctx->last_input = input;
+        return input;
+    }
+
+    // Everything else → unified vim engine (input_state.c)
+    input = input_convert(input_state, c, 0, NULL, false);
+    ctx->last_input = input;
     return input;
 }
 static void ui_show_message(UiContext *ctx, const char *format, ...) {

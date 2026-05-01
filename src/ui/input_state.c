@@ -115,6 +115,15 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
       case 'p':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_PASTE_AS_CHILD};
+      case '0':
+        input_state->type = INPUT_STATE_DEFAULT;
+        return (UserOperation){.type = UO_MOVE_FOCUS_HOME};
+      case 'J':
+        input_state->type = INPUT_STATE_DEFAULT;
+        return (UserOperation){.type = UO_JOIN_TEXT_WITHOUT_SPACE};
+      case 'f':
+        input_state->type = INPUT_STATE_DEFAULT;
+        return (UserOperation){.type = UO_OPEN_RESOURCE_LINK};
       default:
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_NOP};
@@ -144,6 +153,8 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
       switch (key) {
       case '[':
         return (UserOperation){.type = UO_MOVE_PARENT_PREV_SIBLING_BEGIN};
+      case '{':
+        return (UserOperation){.type = UO_MOVE_FOLD_BEGIN};
       case ']':
         return (UserOperation){.type = UO_MOVE_PARENT_PREV_SIBLING_END};
       case 't':
@@ -159,6 +170,8 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
             switch(key){
                 case ']':
                   return (UserOperation){.type = UO_MOVE_PARENT_NEXT_SIBLING_END};
+                case '}':
+                  return (UserOperation){.type = UO_MOVE_FOLD_END};
                 case '[':
                   return (UserOperation){.type = UO_MOVE_PARENT_NEXT_SIBLING_BEGIN};
                 case 't':
@@ -172,6 +185,9 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
       case 'Z':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_EXIT_SAVE};
+      case 'Q':
+        input_state->type = INPUT_STATE_DEFAULT;
+        return (UserOperation){.type = UO_EXIT_NO_SAVE};
       default:
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_NOP};
@@ -214,6 +230,9 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
           case 'L':
               input_state->type = INPUT_STATE_DEFAULT;
               return (UserOperation){.type = UO_VIEW_HALF_SCREEN_RIGHT};
+          case 'T':
+              input_state->type = INPUT_STATE_DEFAULT;
+              return (UserOperation){.type = UO_INDEX_FROM_ROOT};
       default:
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_NOP};
@@ -237,6 +256,14 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
           return (UserOperation){.type = UO_JUMP_BACK};
         case 'i':
           return (UserOperation){.type = UO_JUMP_FORWARD};
+        case 'e':
+          return (UserOperation){.type = UO_VIEW_DOWN};
+        case 'y':
+          return (UserOperation){.type = UO_VIEW_UP};
+        case 'r':
+          return (UserOperation){.type = UO_REDO};
+        case ']':
+          return (UserOperation){.type = UO_JUMP_KEYWORD_GLOBAL_DEFINITION};
         default:
           return (UserOperation){.type = UO_NOP};
       }
@@ -325,6 +352,26 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
         case ' ':
             input_state->type = INPUT_STATE_DEFAULT;
             return (UserOperation){.type = UO_HIT_SPACE};
+        case 'I':
+            return (UserOperation){.type = UO_INSERT_PARENT_LEFT};
+        case 'u':
+            return (UserOperation){.type = UO_UNDO};
+        case 'v':
+            return (UserOperation){.type = UO_VI_EDIT_NODE};
+        case 'K':
+            return (UserOperation){.type = UO_KEYWORD_LOOKUP};
+        case '{':
+            return (UserOperation){.type = UO_MOVE_PARENT_PREV_SIBLING_BEGIN};
+        case '}':
+            return (UserOperation){.type = UO_MOVE_PARENT_NEXT_SIBLING_END};
+        case '$':
+            return (UserOperation){.type = UO_MOVE_FOCUS_MOST_LEFT_UPPER};
+        case 'E':
+            return (UserOperation){.type = UO_MOVE_FOCUS_MOST_LEFT_LOWER};
+        case '?':
+            return (UserOperation){.type = UO_SEARCH_BACKWARD};
+        case ':':
+            return (UserOperation){.type = UO_COMMAND_MODE};
         default:
           break;
      }
