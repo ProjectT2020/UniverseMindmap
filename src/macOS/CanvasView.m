@@ -1000,6 +1000,28 @@ replacementString:(NSString *)string
         self.hitTesting = NO;
 
         if(!tree_node_is_null(self.hitNode)) {
+            // Cmd+click: jump to definition, fallback to open resource link
+            if (event.modifierFlags & NSEventModifierFlagCommand) {
+                app_state->input_state->type = INPUT_STATE_DEFAULT;
+                dont_adjust_doc_view_by_current = false;
+                update_current_with_history(app_state, self.hitNode);
+
+                // Try gd first (jump to keyword definition)
+                TreeNode before = app_state->current_node;
+                app_apply_event(app_state, (UserOperation){.type = UO_JUMP_KEYWORD_DEFINITION});
+                TreeNode after = app_state->current_node;
+
+                // If gd didn't move, fallback to gD (open resource link)
+                if (tree_node_id(before) == tree_node_id(after)) {
+                    app_apply_event(app_state, (UserOperation){.type = UO_OPEN_RESOURCE_LINK});
+                }
+
+                [self performWithoutImplicitAnimation:^{
+                    [self render_mindmap];
+                }];
+                return;
+            }
+
             if(self.hitCurrent) {
                 if(tree_node_collapsed(self.hitNode)){
                     app_state->input_state->type = INPUT_STATE_DEFAULT;
