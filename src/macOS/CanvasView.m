@@ -1112,6 +1112,29 @@ replacementString:(NSString *)string
             return;
         }
     }
+    // Control + Command + arrows: window snapping (alias for Fn+Ctrl+arrows)
+    if(isFnDown && isControlDown && isCommandDown && !isOptionDown){
+        switch(event.keyCode){
+            case 124:
+                [self snapWindowToRightHalf];
+                [self layout];
+                return;
+            case 123:
+                [self snapWindowToLeftHalf];
+                [self layout];
+                return;
+            case 126:
+                [self snapWindowToTopHalf];
+                [self layout];
+                return;
+            case 125:
+                [self snapWindowToBottomHalf];
+                [self layout];
+                return;
+            default:
+                break;
+        }
+    }
     // Command + ...
     if(!isFnDown && !isControlDown && !isOptionDown && isCommandDown){
         CGPoint focusPoint = self.latestMouseViewPoint;
