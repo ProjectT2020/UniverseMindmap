@@ -187,7 +187,14 @@ OSStatus HotKeyHandler(EventHandlerCallRef nextHandler,
     app_state->ui_view_half_screen_right = canvas_view_half_screen_right;
     app_state->ui_view_half_screen_left = canvas_view_half_screen_left;
 
-    [self.window center];
+    [self.window setFrameAutosaveName:@"MainWindow"];
+
+    // Only center if no saved window frame (first launch)
+    NSString *savedFrameKey = [NSString stringWithFormat:@"NSWindow Frame %@", self.window.frameAutosaveName];
+    if ([[NSUserDefaults standardUserDefaults] objectForKey:savedFrameKey] == nil) {
+        [self.window center];
+    }
+
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
     [self registerHotKey];
