@@ -306,6 +306,23 @@ replacementString:(NSString *)string
             return NO;
         }
 
+        // Command mode: parse and execute command
+        if(app_state->input_state->type == INPUT_STATE_TYPE_GET_COMMAND){
+            NSString *cmdText = [textView.string substringFromIndex:1]; // strip ":"
+            if(cmdText.length > 0){
+                if(app_state->command) free(app_state->command);
+                app_state->command = strdup([cmdText UTF8String]);
+                UserOperation cmdUo = input_convert(app_state->input_state, '\0', 0,
+                    [cmdText UTF8String], NO);
+                app_apply_event(app_state, cmdUo);
+            }
+            [self layout];
+            [self performWithoutImplicitAnimation:^{
+                [self render_mindmap];
+            }];
+            return NO;
+        }
+
         UserOperation uo = input_convert(app_state->input_state, '\0', 0, 
         [[textView.string substringFromIndex:1] UTF8String], NO);
         app_apply_event(app_state, uo);
@@ -650,7 +667,8 @@ replacementString:(NSString *)string
     textView.backgroundColor = [NSColor whiteColor];
     textView.textColor = [NSColor blackColor];
     textView.font = default_font();
-    textView.string = app_state->node_text != NULL ? [NSString stringWithUTF8String:app_state->node_text] : @"";
+    NSString *nameStr = app_state->node_text ? [NSString stringWithUTF8String:app_state->node_text] : nil;
+    textView.string = nameStr ?: @"";
 
     // place cursor 
     switch(app_state->input_state->type){
@@ -809,9 +827,13 @@ replacementString:(NSString *)string
         logd("Layout: view size (%.2f, %.2f), viewOrigon (%.2f, %.2f)", view_w, view_h, self.viewOrigon.x, self.viewOrigon.y);
     }
     // Re-render after frame change (zoom, resize, etc.)
-    [self performWithoutImplicitAnimation:^{
-        [self render_mindmap];
-    }];
+    // Only when NOT in text-editing states to avoid recursive layout→render_mindmap→canvas_view_get_name→layout
+    if(app_state->input_state->type == INPUT_STATE_DEFAULT
+    || app_state->input_state->type == INPUT_STATE_TYPE_COMPUTED_INPUT){
+        [self performWithoutImplicitAnimation:^{
+            [self render_mindmap];
+        }];
+    }
 }
 
 - (void)viewDidMoveToWindow {
@@ -1362,7 +1384,7 @@ replacementString:(NSString *)string
         default:
             
             if(('a' <= key && key <= 'z') || ('A' <= key && key <= 'Z') || ('0' <= key && key <= '9') || key == '.' || key == '\''
-                || key == '/'
+                || key == '/' || key == ':'
                 || key == '?'
                 || key == '[' || key == ']' 
                 || key == '#' || key == '$' || key == '%' || key == '^' || key == '&' || key == '*' || key == '(' || key == ')'
@@ -1392,6 +1414,16 @@ replacementString:(NSString *)string
                     NSSize textSize = [self.bottomCommandTextView.string sizeWithAttributes:@{NSFontAttributeName: default_font()}];
                     self.bottomCommandTextView.frame = CGRectMake(0, 0, textSize.width + default_text_points, default_base_points);
                     [self layout];
+                }else if(app_state->input_state->type == INPUT_STATE_TYPE_GET_COMMAND){
+                    // Command mode: show text input with ":" prefix
+                    self.bottomCommandTextView.font = default_font();
+                    self.bottomCommandTextView.drawsBackground = YES;
+                    self.bottomCommandTextView.backgroundColor = [NSColor blackColor];
+                    self.bottomCommandTextView.textColor = [NSColor whiteColor];
+                    self.bottomCommandTextView.string = @":";
+                    self.bottomCommandTextView.hidden = NO;
+                    self.bottomCommandTextView.frame = CGRectMake(0, 0, self.bounds.size.width, default_base_points);
+                    [self.window makeFirstResponder:self.bottomCommandTextView];
                 }else if(app_state->input_state->type != INPUT_STATE_TYPE_SEARCH_QUERY
                     && app_state->input_state->type != INPUT_STATE_TYPE_SEARCH_BACKWARD_QUERY){
                     self.bottomCommandTextView.hidden = YES;

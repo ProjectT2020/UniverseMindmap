@@ -25,6 +25,10 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
     input_state->type = INPUT_STATE_DEFAULT;
     return (UserOperation){.type = UO_DO_SEARCH_BACKWARD, .data = (void*)strdup(text)};
   }
+  if (input_state->type == INPUT_STATE_TYPE_GET_COMMAND) {
+    input_state->type = INPUT_STATE_DEFAULT;
+    return (UserOperation){.type = UO_DO_COMMAND, .data = (void*)strdup(text)};
+  }
   if(input_state->type == INPUT_STATE_TYPE_JUMP_TO_VISIBLE_TAG){
      if(input_state->prefix_count == 0){
           input_state->prefix_count++;
