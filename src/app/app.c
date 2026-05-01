@@ -3942,6 +3942,9 @@ void app_apply_event(AppState *app, UserOperation uo) {
     case UO_EXIT_SAVE:
         handle_exit_save(app);
         break;
+    case UO_TOGGLE_ANCESTORS:
+        app->show_ancestors = !app->show_ancestors;
+        break;
     default:
         log_warn("Unhandled UserOperation type: %d", uo.type);
         break;

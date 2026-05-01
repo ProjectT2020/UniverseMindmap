@@ -275,6 +275,8 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
           return (UserOperation){.type = UO_VIEW_DOWN};
         case 'y':
           return (UserOperation){.type = UO_VIEW_UP};
+        case 'g':
+          return (UserOperation){.type = UO_TOGGLE_ANCESTORS};
         case 'r':
           return (UserOperation){.type = UO_REDO};
         case ']':

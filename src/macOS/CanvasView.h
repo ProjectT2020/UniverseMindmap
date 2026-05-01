@@ -66,6 +66,7 @@ double text_field_display_width(TreeNode node);
 @property(nonatomic) CGPoint viewOrigon;
 @property(nonatomic) CGFloat zoomScale;
 @property(nonatomic) CGRect currentNodeFrame;
+@property(nonatomic, strong) NSMutableArray<CALayer *> *ancestorLayers;
 @property(nonatomic, strong) TextInputView *bottomCommandTextView;
 @property(nonatomic, strong) CATextLayer *infoMessageLayer;
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *visibleNodeInfos;

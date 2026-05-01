@@ -145,7 +145,8 @@ typedef struct {
         // headless exit operations
         UO_EXIT_SAVE,             // save and exit
         UO_EXIT_NO_SAVE,          // exit without saving
-        UO_SAVE                   // save 
+        UO_SAVE,                   // save
+        UO_TOGGLE_ANCESTORS        // Ctrl+G toggle ancestor breadcrumb
     } type;
     int param1;
     int param2;

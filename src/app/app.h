@@ -75,6 +75,8 @@ typedef struct AppState {
     // input handling
     InputState *input_state; 
 
+    bool show_ancestors;         // Ctrl+G toggle: flatten ancestors on current node line
+
     // searching
     char *search_query;
     int search_exact;           // whether to match exactly (0=contain, 1=exact)

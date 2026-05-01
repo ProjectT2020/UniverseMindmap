@@ -469,7 +469,7 @@ replacementString:(NSString *)string
     return self;
 }
 
-- (void)mindmap_render_node:(AppState *)state node:(TreeNode)node worldLayer:(CALayer *)worldLayer
+- (BOOL)mindmap_render_node:(AppState *)state node:(TreeNode)node worldLayer:(CALayer *)worldLayer
     originX:(double)origin_x originY:(double)origin_y parentY:(double)parent_y
 {
     int default_link_padding = default_text_points / 4;
@@ -477,13 +477,14 @@ replacementString:(NSString *)string
     if(default_link_points < default_link_padding * 2) default_link_points = default_link_padding * 2;
     uint64_t id = tree_node_id(node);
     bool is_current = tree_node_id(node) == tree_node_id(state->current_node);
+    BOOL containsCurrent = is_current;
     int layout_height = mind_node_height(state->tree_overlay, node);
     if(tree_node_collapsed(node))   {
         layout_height = 1;
     };
     double layout_height_points = layout_height * default_base_points;
     if(!intersect1D(origin_y, origin_y + layout_height_points, self.viewOrigon.y, self.viewOrigon.y + view_h)){
-        return;
+        return containsCurrent;
     }
 
     // draw link to parent
@@ -677,10 +678,11 @@ replacementString:(NSString *)string
         f;
         })];
     }
+    // Remove old ancestor collection
     [worldLayer addSublayer:textLayer];
 
     if(tree_node_collapsed(node)) {
-        return;
+        return containsCurrent;
     }
 
 
@@ -719,12 +721,21 @@ replacementString:(NSString *)string
     while (!tree_node_is_null(child)) {
         int child_layout_height = mind_node_height(state->tree_overlay, child);
         double child_layout_height_points = child_layout_height * default_base_points;
-        [self mindmap_render_node:state node:child worldLayer:worldLayer 
+        if([self mindmap_render_node:state node:child worldLayer:worldLayer 
             originX:origin_x + textSize.width + default_link_points 
-            originY:origin_y + y parentY:origin_y+layout_height_points/2.0];
+            originY:origin_y + y parentY:origin_y+layout_height_points/2.0]){
+            containsCurrent = YES;
+        }
         y += child_layout_height_points;
         child = tree_node_next_sibling(state->tree_overlay, child);
     }
+
+    // Ancestor tracking: if current node is in our subtree but we are not it, we are an ancestor
+    if(app_state->show_ancestors && containsCurrent && !is_current){
+        [self.ancestorLayers addObject:textLayer];
+    }
+
+    return containsCurrent;
 }
 
 - (void)canvas_view_get_name{
@@ -857,14 +868,51 @@ replacementString:(NSString *)string
 
     // render
     self.visibleNodeInfos = [NSMutableArray array];
+    if(app_state->show_ancestors){
+        self.ancestorLayers = [NSMutableArray array];
+    }
     if(app_state->input_state->mark_and_show_visible_nodes){
         app_state->mark_id = -1;
     }
-    [self mindmap_render_node:(AppState *) app_state node:app_state->tree_overlay->root worldLayer:self.worldLayer originX:0 originY:0 parentY:0];
+    (void)[self mindmap_render_node:(AppState *) app_state node:app_state->tree_overlay->root worldLayer:self.worldLayer originX:0 originY:0 parentY:0];
     // flush
     [CATransaction flush];
 
     [self updateInfoView];
+    
+    // Build ancestor breadcrumb row when showAncestors is on
+    if(app_state->show_ancestors && self.ancestorLayers.count > 0
+       && !tree_node_is_null(app_state->current_node)){
+        // Copy ancestor layers to current node's Y, preserving their original X positions;
+        // connect copies with → arrows
+        CALayer *prevCopy = nil;
+        for(CALayer *aLayer in self.ancestorLayers){
+            CATextLayer *aText = (CATextLayer *)aLayer;
+
+            // Copy of ancestor text layer at original X but current node's Y
+            CATextLayer *copy = [CATextLayer layer];
+            copy.contentsScale = aText.contentsScale;
+            copy.fontSize = aText.fontSize;
+            copy.font = aText.font;
+            copy.alignmentMode = aText.alignmentMode;
+            copy.foregroundColor = aText.foregroundColor;
+            copy.backgroundColor = aText.backgroundColor;
+            // Underlined attributed string for ancestor breadcrumb copy, preserving font/color
+            NSDictionary *attrs = @{
+                NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle),
+                NSFontAttributeName: (__bridge NSFont *)aText.font,
+                NSForegroundColorAttributeName: [NSColor colorWithCGColor:aText.foregroundColor],
+            };
+            copy.string = [[NSAttributedString alloc] initWithString:(NSString *)aText.string
+                attributes:attrs];
+            copy.frame = CGRectMake(aText.frame.origin.x, 
+                self.currentNodeFrame.origin.y,
+                aText.frame.size.width, default_base_points);
+            [self.worldLayer addSublayer:copy];
+
+            prevCopy = copy;
+        }
+    }
 }
 
 - (BOOL)acceptsFirstResponder {
@@ -1381,6 +1429,7 @@ replacementString:(NSString *)string
             case 'b':
             case 'e':
             case 'y':
+            case 'g':
             case 'o':
             case 'i':
             {
@@ -1392,7 +1441,6 @@ replacementString:(NSString *)string
 
                 return;
             }
-            
         }
     }
     // if Page Down / Page Up / Home / End 
