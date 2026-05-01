@@ -2625,9 +2625,10 @@ void handle_do_search(AppState *app, UserOperation uo){
 
 void handle_search_backward(AppState *app){
     app->input_state->type = INPUT_STATE_TYPE_SEARCH_BACKWARD_QUERY;
+    app->ui_get_search_backward_query(app->ui_ctx);
 }
-void handle_do_search_backward(AppState *app){
-    char *query = app->search_query;
+void handle_do_search_backward(AppState *app, UserOperation uo){
+    char *query = uo.data ? uo.data : app->search_query;
     app->operate->search_direction = SEARCH_DIRECTION_BACKWARD;
     snprintf(app->operate->search_query, sizeof(app->operate->search_query), "%s", query);
     if(query == NULL || strlen(query) == 0){
@@ -3838,7 +3839,7 @@ void app_apply_event(AppState *app, UserOperation uo) {
         handle_search_backward(app);
         break;
     case UO_DO_SEARCH_BACKWARD:
-        handle_do_search_backward(app);
+        handle_do_search_backward(app, uo);
         break;
     case UO_SEARCH_NEXT:
         handle_search_next(app);

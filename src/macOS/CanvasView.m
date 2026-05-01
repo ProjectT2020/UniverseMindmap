@@ -60,6 +60,21 @@ char* canvas_view_get_search_query(void *view){
     return NULL;
 }
 
+char* canvas_view_get_search_backward_query(void *view){
+    CanvasView *v = (__bridge CanvasView *)view;
+    NSTextView *textView = v.bottomCommandTextView;
+    textView.font = default_font();
+    textView.drawsBackground = YES;
+    textView.backgroundColor = [NSColor blackColor];
+    textView.textColor = [NSColor whiteColor];
+    textView.string = @"?";
+    textView.hidden = NO;
+    textView.frame = CGRectMake(0, 0, view_w, default_base_points);
+    [v layout];
+    [v.window makeFirstResponder:textView];
+    return NULL;
+}
+
 TreeNode canvas_view_get_viewport_bottommost_sibling(void *ui_ctx, TreeOverlay *ov, TreeNode current) {
     CanvasView *v = (__bridge CanvasView *)ui_ctx;
     TreeNode parent = tree_node_parent(ov, current);
@@ -1239,6 +1254,7 @@ replacementString:(NSString *)string
             
             if(('a' <= key && key <= 'z') || ('A' <= key && key <= 'Z') || ('0' <= key && key <= '9') || key == '.' || key == '\''
                 || key == '/'
+                || key == '?'
                 || key == '[' || key == ']' 
                 || key == '#' || key == '$' || key == '%' || key == '^' || key == '&' || key == '*' || key == '(' || key == ')'
                 || key == '-' || key == '=' || key == ' '
@@ -1266,7 +1282,8 @@ replacementString:(NSString *)string
                     NSSize textSize = [self.bottomCommandTextView.string sizeWithAttributes:@{NSFontAttributeName: default_font()}];
                     self.bottomCommandTextView.frame = CGRectMake(0, 0, textSize.width + default_text_points, default_base_points);
                     [self layout];
-                }else if(app_state->input_state->type != INPUT_STATE_TYPE_SEARCH_QUERY){
+                }else if(app_state->input_state->type != INPUT_STATE_TYPE_SEARCH_QUERY
+                    && app_state->input_state->type != INPUT_STATE_TYPE_SEARCH_BACKWARD_QUERY){
                     self.bottomCommandTextView.hidden = YES;
                 }
 

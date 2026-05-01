@@ -175,6 +175,7 @@ OSStatus HotKeyHandler(EventHandlerCallRef nextHandler,
     app_state->ui_render = canvas_view_render;
     app_state->ui_center_view_on_current = canvas_view_center_view_on_current; 
     app_state->ui_get_search_query = canvas_view_get_search_query;
+    app_state->ui_get_search_backward_query = canvas_view_get_search_backward_query;
     app_state->ui_get_viewport_topmost_sibling = canvas_view_get_viewport_topmost_sibling;
     app_state->ui_get_viewport_bottommost_sibling = canvas_view_get_viewport_bottommost_sibling;
     app_state->ui_view_prev_page = canvas_view_prev_page;

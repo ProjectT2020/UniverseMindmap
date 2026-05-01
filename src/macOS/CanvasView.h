@@ -16,6 +16,7 @@ static inline void logd(const char *fmt, ...) {
 void canvas_view_render(void *view);
 void canvas_view_center_view_on_current(void *view);
 char* canvas_view_get_search_query(void *view);
+char* canvas_view_get_search_backward_query(void *view);
 TreeNode canvas_view_get_viewport_topmost_sibling(void *ui_ctx, TreeOverlay *ov, TreeNode current);
 TreeNode canvas_view_get_viewport_bottommost_sibling(void *ui_ctx, TreeOverlay *ov, TreeNode current);
 void canvas_view_prev_page(void *ui_ctx);
