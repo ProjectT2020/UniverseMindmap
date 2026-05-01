@@ -1369,6 +1369,7 @@ replacementString:(NSString *)string
                 || key == '-' || key == '=' || key == ' '
                 || key == '\t' || key == ';' || key == '\\'
                 || key == '\n' || key == '\r'
+                || key == 0x1b   // Escape — cancel prefix/search
                 ){ 
                 UserOperation uo = input_convert(app_state->input_state, key, 0, NULL, NO);
                 app_apply_event(app_state, uo);

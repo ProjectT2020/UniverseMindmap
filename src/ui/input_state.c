@@ -42,6 +42,13 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
      }
   }
   if (input_state->type == INPUT_STATE_PREFIX) {
+    // Escape cancels any pending prefix
+    if (key == '\e' || key == 0x1b) {
+        input_state->type = INPUT_STATE_DEFAULT;
+        input_state->prefix = '\0';
+        input_state->prefix_count = 0;
+        return (UserOperation){.type = UO_NOP};
+    }
     switch (input_state->prefix) {
         case '\'':
             input_state->type = INPUT_STATE_DEFAULT;
