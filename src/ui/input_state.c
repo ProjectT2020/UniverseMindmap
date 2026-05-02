@@ -275,8 +275,12 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
           return (UserOperation){.type = UO_PREV_PAGE};
         case 'o':
           return (UserOperation){.type = UO_JUMP_BACK};
+        case 'O':
+          return (UserOperation){.type = UO_JUMP_BACK_TO_PREVIOUS_TOPIC};
         case 'i':
           return (UserOperation){.type = UO_JUMP_FORWARD};
+        case 'I':
+          return (UserOperation){.type = UO_JUMP_FORWARD_TO_NEXT_TOPIC};
         case 'e':
           return (UserOperation){.type = UO_VIEW_DOWN};
         case 'y':

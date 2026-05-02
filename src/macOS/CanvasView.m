@@ -1545,7 +1545,7 @@ replacementString:(NSString *)string
                 || key == '\n' || key == '\r'
                 || key == 0x1b   // Escape — cancel prefix/search
                 ){ 
-                UserOperation uo = input_convert(app_state->input_state, key, 0, NULL, NO);
+                UserOperation uo = input_convert(app_state->input_state, key, 0, NULL, isControlDown);
                 app_apply_event(app_state, uo);
                 if(app_state->input_state->type != INPUT_STATE_PREFIX
                     && app_state->input_state->type != INPUT_STATE_TYPE_JUMP_TO_VISIBLE_TAG

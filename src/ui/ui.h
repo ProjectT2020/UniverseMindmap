@@ -137,6 +137,8 @@ typedef struct {
         // jump history
         UO_JUMP_BACK,             // Ctrl+O jump back in history
         UO_JUMP_FORWARD,          // Ctrl+I (Tab) jump forward in history (after jumping back)
+        UO_JUMP_BACK_TO_PREVIOUS_TOPIC,
+        UO_JUMP_FORWARD_TO_NEXT_TOPIC,
         UO_MARK_NODE,              // mark node with letter
         UO_JUMP_TO_MARK,            // jump to mark
         UO_JUMP_TO_UI_NODE_MARK,    // visible node mark

@@ -2095,6 +2095,58 @@ static void handle_jump_back(AppState *app) {
     log_debug("[handle_jump_back] After: current_node id=%lu", tree_node_id(app->current_node));
 }
 
+static bool is_topic_node(TreeNode node){
+    if(tree_node_is_null(node)){
+        return false;
+    }
+    const char *text = tree_node_text(node);
+    int len = strlen(text);
+    if(len < 2){
+        return false;
+    }
+    return text[0] == '[' && text[len-1] == ']';
+}
+
+static TreeNode app_node_topic(AppState *app, TreeNode node){
+    node = tree_node_parent(app->tree_overlay, node);
+    while(!tree_node_is_null(node)){
+        if(is_topic_node(node)){
+            return node;
+        }
+        node = tree_node_parent(app->tree_overlay, node);
+    }
+    return node;
+}
+
+static void handle_jump_back_to_previous_topic(AppState *app) {
+    log_debug("[handle_jump_back_to_previous_topic] Jumping back to previous topic in history");
+    TreeNode current_topic =app_node_topic(app, app->current_node);
+    uint64_t current_topic_id = tree_node_id(current_topic);
+    while(!stack_is_empty(app->jump_back_stack)){
+        uint64_t node_id = (uint64_t)(uintptr_t)stack_pop(app->jump_back_stack);
+        TreeNode node = tree_find_by_id(app->tree_overlay, node_id);
+        if(tree_node_is_null(node)){
+            log_warn("Jump back target node id=%lu not found, skipping", node_id);
+            continue;
+        }
+        TreeNode topic = app_node_topic(app, node);
+        if(tree_node_is_null(topic)){
+            log_warn("Jump back target node id=%lu has no topic ancestor, skipping", node_id);
+            continue;
+        }
+        uint64_t topic_id = tree_node_id(topic);
+        if(topic_id != current_topic_id){
+            app->current_node = node;
+            stack_push(app->jump_forward_stack, (void*)(uintptr_t)current_topic_id);
+            log_debug("[handle_jump_back_to_previous_topic] After: current_node id=%lu", tree_node_id(app->current_node));
+            return;
+        }
+
+    }
+    log_info("No previous topic found in jump back history");    
+    app_ui_info_set_message(app, "No previous topic found in jump back history");
+}
+
 static void handle_jump_forward(AppState *app) {
     log_debug("[handle_jump_forward] Jumping forward in history");
     if(stack_is_empty(app->jump_forward_stack)){
@@ -3546,7 +3598,6 @@ static void handle_jump_keyword_definition(AppState *app){
             log_info("No definition found for '%s'", current_text);
         }else{
             update_current_with_history(app, r);
-            app_ui_info_set_message(app, "Jumped to definition for '%s'", tree_node_text(app->current_node));
             log_info("Jumped to definition for '%s'", tree_node_text(app->current_node));
         }
         return;
@@ -3559,7 +3610,6 @@ static void handle_jump_keyword_definition(AppState *app){
     int r = handle_jump_hierachy_definition(app, app->tree_overlay->root, tree_node_text(app->current_node), jump_definition_filter, &filter_ctx);
     if(r == 0){
         app->current_node = tree_find_by_id(app->tree_overlay, tree_node_id(app->current_node));
-        app_ui_info_set_message(app, "Jumped to definition for '%s'", tree_node_text(app->current_node));
         log_info("Jumped to definition for '%s'", tree_node_text(app->current_node));
     }else if(r == 1){
         app_ui_info_set_message(app, "No definition found for '%s'", tree_node_text(app->current_node));
@@ -3982,7 +4032,11 @@ void app_apply_event(AppState *app, UserOperation uo) {
     case UO_JUMP_BACK:
         handle_jump_back(app);
         break;
+    case UO_JUMP_BACK_TO_PREVIOUS_TOPIC:
+        handle_jump_back_to_previous_topic(app);
+        break;
     case UO_JUMP_FORWARD:
+    case UO_JUMP_FORWARD_TO_NEXT_TOPIC:
         handle_jump_forward(app);
         break;
     case UO_MOVE_FOCUS_HOME:
