@@ -49,6 +49,7 @@ bool is_hand_on_mouse;
 
 static TreeNode app_ensure_metadata_node(Operate *operate); ;
 static void handle_add_child_to_tail(AppState *app, TreeNode node) ;
+static void handle_insert_parent_left(AppState *app);
 
 
 void app_ui_info_set_message(AppState *app, const char *message, ...) {
@@ -597,6 +598,73 @@ static void handle_add_sibling_below(AppState *app) {
         event_destroy(event);
         handle_edit_node(app);
     }
+}
+
+static void handle_insert_parent_left(AppState *app) {
+    log_debug("[handle_insert_parent_left] Inserting parent to the left of current node");
+    TreeNode current = app->current_node;
+    TreeNode parent = tree_node_parent(app->tree_overlay, current);
+    if (tree_node_is_null(parent)) {
+        log_warn("handle_insert_parent_left: Cannot insert parent for root node");
+        return;
+    }
+
+    uint64_t current_id = tree_node_id(current);
+    uint64_t parent_id = tree_node_id(parent);
+
+    // Step 1: Create a new sibling above the current node
+    Event *add_event;
+    TreeNode first_child = tree_node_first_child(app->tree_overlay, parent);
+    if (current_id == tree_node_id(first_child)) {
+        add_event = event_create_add_first_child(parent_id, "Unnamed Parent");
+    } else {
+        TreeNode prev_sibling = tree_node_prev_sibling(app->tree_overlay, current);
+        if (tree_node_is_null(prev_sibling)) {
+            log_error("handle_insert_parent_left: Previous sibling is null unexpectedly");
+            return;
+        }
+        add_event = event_create_add_sibling(tree_node_id(prev_sibling), "Unnamed Parent");
+    }
+
+    int r = operate_commit_event(app->operate, add_event);
+    if (r != 0) {
+        log_warn("handle_insert_parent_left: Failed to create new parent node");
+        event_destroy(add_event);
+        return;
+    }
+
+    uint64_t new_parent_id = add_event->new_node_id;
+    event_destroy(add_event);
+    add_event = NULL;
+
+    // Step 2: Move the current node to be a child (tail) of the new parent
+    // Re-find current node and its context (tree may have changed)
+    TreeNode current_after_add = tree_find_by_id(app->tree_overlay, current_id);
+    if (tree_node_is_null(current_after_add)) {
+        log_error("handle_insert_parent_left: Current node not found after adding new parent");
+        return;
+    }
+    TreeNode parent_after_add = tree_node_parent(app->tree_overlay, current_after_add);
+    TreeNode next_sibling = tree_node_next_sibling(app->tree_overlay, current_after_add);
+
+    Event *move_event = event_create_move_to_children_tail(
+        current_id,                    // node to move
+        new_parent_id,                 // new parent
+        tree_node_id(parent_after_add),// old parent
+        tree_node_id(next_sibling)     // old next sibling (for undo)
+    );
+
+    r = operate_commit_event(app->operate, move_event);
+    event_destroy(move_event);
+    if (r != 0) {
+        log_warn("handle_insert_parent_left: Failed to move current node under new parent");
+        return;
+    }
+
+    // Set current node to the new parent and enter edit mode
+    app->current_node = tree_find_by_id(app->tree_overlay, new_parent_id);
+    app->ui_render(app->ui_ctx);
+    handle_edit_node(app);
 }
 
 void handle_edit_node(AppState *app){
@@ -3838,7 +3906,7 @@ void app_apply_event(AppState *app, UserOperation uo) {
         handle_copy_text_to_system_clipboard(app);
         break;
     case UO_INSERT_PARENT_LEFT:
-        log_debug("Insert parent left operation - to be implemented");
+        handle_insert_parent_left(app);
         break;
     case UO_COPY_SUBTREE_TO_SYSTEM_CLIPBOARD:{
         handle_copy_subtree_to_system_clipboard(app);
