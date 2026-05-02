@@ -401,6 +401,11 @@ replacementString:(NSString *)string
 
         self.bottomCommandTextView = [[TextInputView alloc] initWithFrame:CGRectMake(0, default_base_points, 
                 self.bounds.size.width, default_base_points)];
+
+        // prevent confusing behavior of automatic substitutions while typing commands (e.g. "--" turning into "—")
+        self.bottomCommandTextView.automaticDashSubstitutionEnabled = NO;
+        self.bottomCommandTextView.automaticQuoteSubstitutionEnabled = NO;
+
         self.bottomCommandTextView.font = default_font();
         self.bottomCommandTextView.drawsBackground = YES;
         self.bottomCommandTextView.backgroundColor = [NSColor grayColor];
@@ -575,7 +580,7 @@ replacementString:(NSString *)string
     textLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor;
     textLayer.fontSize = default_text_points;
     textLayer.font = CFBridgingRetain(default_font());
-    textLayer.alignmentMode = kCAAlignmentCenter;
+    textLayer.alignmentMode = kCAAlignmentLeft;
     textLayer.backgroundColor = [NSColor whiteColor].CGColor;
     textLayer.foregroundColor = [NSColor blackColor].CGColor;
     // textLayer.backgroundColor = randomVividColor();
