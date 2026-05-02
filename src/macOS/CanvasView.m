@@ -273,6 +273,10 @@ double text_field_display_width(TreeNode node){
         self.onCancel();
     }
 }
+- (void)paste:(id)sender {
+    // Strip formatting from pasted text — use plain text only
+    [self pasteAsPlainText:sender];
+}
 @end
 
 #pragma mark - Canvas View (Layer-based, no drawRect)
@@ -1222,6 +1226,13 @@ replacementString:(NSString *)string
         CGFloat th = [self titlebarZoneHeight];
         if (loc.y >= NSHeight(self.bounds) - th) {
             [self.window zoom:nil];
+            // After zoom/restore, reset traffic light buttons to hidden
+            // (they were shown by mouseEntered before the double-click)
+            // and update tracking areas to match the new frame.
+            self.closeButton.alphaValue = 0;
+            self.minimizeButton.alphaValue = 0;
+            self.zoomButton.alphaValue = 0;
+            [self updateTrackingAreas];
             [self layout];
             [self performWithoutImplicitAnimation:^{
                 [self render_mindmap];
