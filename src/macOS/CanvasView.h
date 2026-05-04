@@ -47,7 +47,7 @@ double text_field_display_width(TreeNode node);
 #pragma mark - Canvas View (Layer-based, no drawRect)
 @interface CanvasView : NSView <NSTextViewDelegate>
 @property(nonatomic,strong) CADisplayLink *displayLink;
-@property(nonatomic,strong) CALayer *worldLayer;
+@property(nonatomic,strong) CALayer *mindmapDocLayer;
 // @property(nonatomic,strong) CATextLayer *fpsLayer;
 @property(nonatomic,strong) CATextLayer *infoLayer;
 @property(nonatomic) BOOL hitTesting;
@@ -69,6 +69,7 @@ double text_field_display_width(TreeNode node);
 @property(nonatomic, strong) NSMutableArray<CALayer *> *ancestorLayers;
 @property(nonatomic, strong) TextInputView *bottomCommandTextView;
 @property(nonatomic, strong) CATextLayer *infoMessageLayer;
+@property(nonatomic, strong) CATextLayer *breadsCrumbLayer;
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *visibleNodeInfos;
 // @property(nonatomic) CFTimeInterval lastFPSUpdateTime;
 @end

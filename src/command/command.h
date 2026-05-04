@@ -23,6 +23,7 @@ typedef enum {
     CMD_UNFOLD_NODE,
     CMD_NEW_TASK,
     CMD_HELLO,
+    CMD_BREADSCRUMB_TOGGLE,
     CMD_EXIT_SAVE,
     CMD_HELP_TOPIC,
     // Add more command types as needed

@@ -292,7 +292,7 @@ double text_field_display_width(TreeNode node){
     return mindmap_x  - self.viewOrigon.x;
 }
 - (double)mindmap_y2canvas_y:(double)mindmap_y {
-    return self.worldLayer.bounds.size.height - (mindmap_y  - self.viewOrigon.y );
+    return self.mindmapDocLayer.bounds.size.height - (mindmap_y  - self.viewOrigon.y );
 }
 
 - (BOOL)textView:(NSTextView *)textView
@@ -428,11 +428,23 @@ replacementString:(NSString *)string
         };
         [self addSubview:self.bottomCommandTextView positioned:NSWindowAbove relativeTo:nil];
 
-        self.worldLayer = [CALayer layer];
-        self.worldLayer.anchorPoint = CGPointZero;
-        // _worldLayer.backgroundColor = [NSColor lightGrayColor].CGColor;
-        self.worldLayer.frame = self.bounds;
-        [self.layer addSublayer:_worldLayer];
+        self.mindmapDocLayer = [CALayer layer];
+        self.mindmapDocLayer.anchorPoint = CGPointZero;
+        // _mindmapDocLayer.backgroundColor = [NSColor lightGrayColor].CGColor;
+        self.mindmapDocLayer.frame = self.bounds;
+        [self.layer addSublayer:self.mindmapDocLayer];
+
+        self.breadsCrumbLayer = [CATextLayer layer];
+        self.breadsCrumbLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor;
+        self.breadsCrumbLayer.fontSize = default_text_points;
+        self.breadsCrumbLayer.font = default_font();
+        self.breadsCrumbLayer.alignmentMode = kCAAlignmentLeft;
+        self.breadsCrumbLayer.foregroundColor = [NSColor blackColor].CGColor;
+        self.breadsCrumbLayer.backgroundColor = [NSColor whiteColor].CGColor;
+        self.breadsCrumbLayer.truncationMode = kCATruncationEnd;
+        self.breadsCrumbLayer.wrapped = NO;
+        self.breadsCrumbLayer.hidden = YES;
+        [self.layer addSublayer:self.breadsCrumbLayer];
 
         self.infoLayer = [CATextLayer layer];
         self.infoLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor;
@@ -477,6 +489,33 @@ replacementString:(NSString *)string
 
     }
     return self;
+}
+
+- (CGFloat)breadsCrumbHeight {
+    if (app_state == NULL) {
+        return 0;
+    }
+    return app_state->show_breadcrumb_title ? default_base_points : 0;
+}
+
+- (void)applyDocAndBreadcrumbLayerFrames {
+    CGFloat totalH = CGRectGetHeight(self.bounds);
+    CGFloat totalW = CGRectGetWidth(self.bounds);
+    CGFloat crumbH = [self breadsCrumbHeight];
+    CGFloat docY = 0;
+    CGFloat docH = totalH - crumbH;
+    if (docH < 0) {
+        docH = 0;
+    }
+
+    view_w = totalW;
+    view_h = docH;
+
+    [self performWithoutImplicitAnimation:^{
+        self.mindmapDocLayer.bounds = NSMakeRect(0, 0, totalW, docH);
+        self.mindmapDocLayer.frame = NSMakeRect(0, docY, totalW, docH);
+        self.breadsCrumbLayer.frame = NSMakeRect(0, totalH - crumbH, totalW, crumbH);
+    }];
 }
 
 - (BOOL)mindmap_render_node:(AppState *)state node:(TreeNode)node worldLayer:(CALayer *)worldLayer
@@ -611,11 +650,11 @@ replacementString:(NSString *)string
                 frame_y = ( self.viewOrigon.y + view_h) - (origin_y + default_base_points );
             }
         }
-        if(frame_y + default_base_points > self.worldLayer.bounds.size.height){
+        if(frame_y + default_base_points > self.mindmapDocLayer.bounds.size.height){
             moved_to_top_when_current_ancestor_is_hidden = true;
-            frame_y = self.worldLayer.bounds.size.height - default_base_points;
+            frame_y = self.mindmapDocLayer.bounds.size.height - default_base_points;
             if(origin_y + layout_height_points - default_base_points < self.viewOrigon.y){
-                frame_y = self.worldLayer.bounds.size.height - default_base_points + (
+                frame_y = self.mindmapDocLayer.bounds.size.height - default_base_points + (
                     self.viewOrigon.y - (origin_y + layout_height_points - default_base_points)
                 );
             }
@@ -631,7 +670,7 @@ replacementString:(NSString *)string
     // Bottommost visible = max doc_center.
     static const double VIEWPORT_PADDING = 2.0; // exclude nodes too close to viewport edge
     if (frame_y >= VIEWPORT_PADDING && frame_y + default_base_points <= view_h - VIEWPORT_PADDING) {
-        double doc_y = self.worldLayer.bounds.size.height - (frame_y + default_base_points / 2.0) + self.viewOrigon.y;
+        double doc_y = self.mindmapDocLayer.bounds.size.height - (frame_y + default_base_points / 2.0) + self.viewOrigon.y;
         TreeNode p = tree_node_parent(state->tree_overlay, node);
         [self.visibleNodeInfos addObject:@{
             @"id": @(tree_node_id(node)),
@@ -641,7 +680,7 @@ replacementString:(NSString *)string
     }
     if(app_state->input_state->mark_and_show_visible_nodes 
       && textLayer.frame.origin.y >= 0 
-      && textLayer.frame.origin.y + textLayer.frame.size.height <= self.worldLayer.bounds.size.height
+      && textLayer.frame.origin.y + textLayer.frame.size.height <= self.mindmapDocLayer.bounds.size.height
       && textLayer.frame.origin.x - default_text_points>= 0
     ){
         app_state->mark_id++;
@@ -794,7 +833,52 @@ replacementString:(NSString *)string
     [self.window makeFirstResponder:textView];
 }
 
+- (void)updateWindowBreadcrumbTitle {
+    if (app_state == NULL || tree_node_is_null(app_state->current_node)) {
+        return;
+    }
+    if (!app_state->show_breadcrumb_title || [self breadsCrumbHeight] <= 0) {
+        [self.breadsCrumbLayer removeFromSuperlayer];
+        self.breadsCrumbLayer = nil;
+        return;
+    }
+
+    NSMutableArray<NSString *> *parts = [NSMutableArray array];
+    uint64_t current_id = tree_node_id(app_state->current_node);
+    TreeNode node = app_state->current_node;
+    TreeOverlay *ov = app_state->tree_overlay;
+    while (!tree_node_is_null(node)) {
+        const char *cstr = tree_node_text(node);
+        if (tree_node_id(node) == current_id || app_is_topic_node(node)) {
+            NSString *name = [NSString stringWithUTF8String:cstr];
+            [parts insertObject:name atIndex:0];
+        }
+        node = tree_node_parent(ov, node);
+    }
+
+    NSString *breadcrumb = [parts componentsJoinedByString:@" ▶ "];
+    [self.breadsCrumbLayer removeFromSuperlayer];
+    CATextLayer *newLayer = [CATextLayer layer];
+    newLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor;
+    newLayer.fontSize = default_text_points;
+    newLayer.font = default_font();
+    newLayer.alignmentMode = kCAAlignmentLeft;
+    newLayer.foregroundColor = [NSColor blackColor].CGColor;
+    newLayer.backgroundColor = [NSColor whiteColor].CGColor;
+    newLayer.truncationMode = kCATruncationEnd;
+    newLayer.wrapped = NO;
+    newLayer.frame = NSMakeRect(0,
+        NSHeight(self.bounds) - [self breadsCrumbHeight],
+        NSWidth(self.bounds),
+        [self breadsCrumbHeight]);
+    newLayer.string = breadcrumb.length > 0 ? breadcrumb : @"";
+    [self.layer addSublayer:newLayer];
+    self.breadsCrumbLayer = newLayer;
+}
+
 - (void)render_mindmap {
+    [self applyDocAndBreadcrumbLayerFrames];
+    [self updateWindowBreadcrumbTitle];
     if(app_state->running == 0) {
         [NSApp terminate:nil];
     }
@@ -817,7 +901,7 @@ replacementString:(NSString *)string
         n = parent;
     }
     // clear existing layers
-    self.worldLayer.sublayers = nil;
+    self.mindmapDocLayer.sublayers = nil;
     // compute current node bounds
     double origin_x = 0;
     int origin_y_int = 0;
@@ -887,7 +971,7 @@ replacementString:(NSString *)string
     if(app_state->input_state->mark_and_show_visible_nodes){
         app_state->mark_id = -1;
     }
-    (void)[self mindmap_render_node:(AppState *) app_state node:app_state->tree_overlay->root worldLayer:self.worldLayer originX:0 originY:0 parentY:0];
+    (void)[self mindmap_render_node:(AppState *) app_state node:app_state->tree_overlay->root worldLayer:self.mindmapDocLayer originX:0 originY:0 parentY:0];
     // flush
     [CATransaction flush];
 
@@ -910,9 +994,8 @@ replacementString:(NSString *)string
             copy.alignmentMode = aText.alignmentMode;
             copy.foregroundColor = aText.foregroundColor;
             copy.backgroundColor = aText.backgroundColor;
-            // Underlined attributed string for ancestor breadcrumb copy, preserving font/color
+            // Preserve font/color for ancestor breadcrumb copy.
             NSDictionary *attrs = @{
-                NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle),
                 NSFontAttributeName: (__bridge NSFont *)aText.font,
                 NSForegroundColorAttributeName: [NSColor colorWithCGColor:aText.foregroundColor],
             };
@@ -921,7 +1004,11 @@ replacementString:(NSString *)string
             copy.frame = CGRectMake(aText.frame.origin.x, 
                 self.currentNodeFrame.origin.y,
                 aText.frame.size.width, default_base_points);
-            [self.worldLayer addSublayer:copy];
+            copy.borderColor = [NSColor colorWithCalibratedWhite:0.2 alpha:0.9].CGColor;
+            copy.borderWidth = 1.0;
+            copy.cornerRadius = 2.0;
+            copy.masksToBounds = YES;
+            [self.mindmapDocLayer addSublayer:copy];
 
             prevCopy = copy;
         }
@@ -938,23 +1025,10 @@ replacementString:(NSString *)string
 
 - (void)layout {
     [super layout];
-    if(app_state->input_state->type == INPUT_STATE_TYPE_SEARCH_QUERY){
-        view_w = CGRectGetWidth(self.bounds);
-        view_h = CGRectGetHeight(self.bounds) - default_base_points;
-        [self performWithoutImplicitAnimation:^{
-            self.worldLayer.bounds = NSMakeRect(0, 0, view_w, view_h);
-            self.worldLayer.frame = NSMakeRect(0, default_base_points, view_w, view_h);
-        }];
-        logd("Layout (search): view size (%.2f, %.2f), viewOrigon (%.2f, %.2f)", view_w, view_h, self.viewOrigon.x, self.viewOrigon.y);
-    }else{
-        view_w = CGRectGetWidth(self.bounds);
-        view_h = CGRectGetHeight(self.bounds);
-        [self performWithoutImplicitAnimation:^{
-            self.worldLayer.bounds = self.bounds;
-            self.worldLayer.frame = NSMakeRect(0, 0, view_w, view_h);
-        }];
-        logd("Layout: view size (%.2f, %.2f), viewOrigon (%.2f, %.2f)", view_w, view_h, self.viewOrigon.x, self.viewOrigon.y);
-    }
+    [self applyDocAndBreadcrumbLayerFrames];
+    [self updateWindowBreadcrumbTitle];
+    logd("Layout: view size (%.2f, %.2f), crumbH(%.2f), viewOrigon (%.2f, %.2f)",
+         view_w, view_h, [self breadsCrumbHeight], self.viewOrigon.x, self.viewOrigon.y);
     // Re-render after frame change (zoom, resize, etc.)
     // Only when NOT in text-editing states to avoid recursive layout→render_mindmap→canvas_view_get_name→layout
     if(app_state->input_state->type == INPUT_STATE_DEFAULT
@@ -995,14 +1069,27 @@ replacementString:(NSString *)string
 /// Compute titlebar zone height from the actual traffic light button position.
 /// More accurate than hardcoded constants; adapts to different macOS versions and window styles.
 - (CGFloat)titlebarZoneHeight {
-    NSRect buttonFrame = [self convertRect:self.closeButton.frame fromView:self.closeButton.superview];
-    CGFloat buttonBottom = NSMinY(buttonFrame);
-    CGFloat height = NSHeight(self.bounds) - buttonBottom;
-    logd("titlebarZoneFromButton: frame=(%.1f,%.1f,%.1f,%.1f) bottom=%.1f viewH=%.1f -> %.1f",
-            buttonFrame.origin.x, buttonFrame.origin.y,
-            buttonFrame.size.width, buttonFrame.size.height,
-            buttonBottom, NSHeight(self.bounds), height);
-    return height + 4;
+    logd("titlebarZoneHeight begin: viewBounds=(x=%.1f,y=%.1f,w=%.1f,h=%.1f) window=%p closeButton=%p",
+         self.bounds.origin.x, self.bounds.origin.y,
+         self.bounds.size.width, self.bounds.size.height,
+         self.window, self.closeButton);
+
+    if (self.window == nil) {
+        logd("titlebarZoneHeight path=contentLayout only: window is NULL, return 0");
+        return 0;
+    }
+
+    NSRect contentLayoutInWindow = self.window.contentLayoutRect;
+    NSRect contentLayoutInView = [self convertRect:self.window.contentLayoutRect fromView:nil];
+    CGFloat topInset = NSHeight(self.bounds) - NSMaxY(contentLayoutInView);
+    CGFloat result = ceil(MAX(0.0, topInset));
+    logd("titlebarZoneHeight path=contentLayout rawWindowRect=(x=%.1f,y=%.1f,w=%.1f,h=%.1f) convertedViewRect=(x=%.1f,y=%.1f,w=%.1f,h=%.1f) calc: topInset=viewH(%.1f)-maxY(%.1f)=%.3f result=ceil(max(0,%.3f))=%.3f",
+         contentLayoutInWindow.origin.x, contentLayoutInWindow.origin.y,
+         contentLayoutInWindow.size.width, contentLayoutInWindow.size.height,
+         contentLayoutInView.origin.x, contentLayoutInView.origin.y,
+         contentLayoutInView.size.width, contentLayoutInView.size.height,
+         NSHeight(self.bounds), NSMaxY(contentLayoutInView), topInset, topInset, result);
+    return result;
 }
 
 - (void)updateTrackingAreas {
@@ -1013,11 +1100,12 @@ replacementString:(NSString *)string
     }
     CGFloat titlebarHeight = [self titlebarZoneHeight];
     CGFloat zoneY0 = NSHeight(self.bounds) - titlebarHeight;
-    self.titlebarTrackingArea = [[NSTrackingArea alloc] initWithRect:NSMakeRect(0, zoneY0, NSWidth(self.bounds), titlebarHeight)
-                                                             options:NSTrackingMouseEnteredAndExited |
-                                                                     NSTrackingActiveInKeyWindow
-                                                               owner:self
-                                                            userInfo:nil];
+    self.titlebarTrackingArea = [[NSTrackingArea alloc] 
+        initWithRect:NSMakeRect(0, zoneY0, NSWidth(self.bounds), titlebarHeight)
+        options:NSTrackingMouseEnteredAndExited |
+                NSTrackingActiveAlways
+        owner:self
+        userInfo:nil];
     [self addTrackingArea:self.titlebarTrackingArea];
     logd("titlebar tracking area set to (0, %.2f, %.2f, %.2f)", self.titlebarTrackingArea.rect.origin.y, self.titlebarTrackingArea.rect.size.width, self.titlebarTrackingArea.rect.size.height);
 }
@@ -1078,8 +1166,8 @@ replacementString:(NSString *)string
     NSPoint screenPoint = [NSEvent mouseLocation];
     NSPoint locationInWindow = [self.window convertPointFromScreen:screenPoint];
     NSPoint locationInView = [self convertPoint:locationInWindow fromView:nil];
-    NSPoint locationInLayer = [self.layer convertPoint:locationInView toLayer:self.worldLayer];
-    NSPoint locationInWorldLayer = [self.worldLayer convertPoint:locationInLayer toLayer:self.worldLayer];
+    NSPoint locationInLayer = [self.layer convertPoint:locationInView toLayer:self.mindmapDocLayer];
+    NSPoint locationInWorldLayer = [self.mindmapDocLayer convertPoint:locationInLayer toLayer:self.mindmapDocLayer];
     //
     NSPoint locationInDocView = [self view2docview:locationInWorldLayer];
     NSPoint locationInDocWorld = CGPointMake(
@@ -1100,12 +1188,12 @@ replacementString:(NSString *)string
     locationInWorldLayer.x, locationInWorldLayer.y,
      locationInDocView.x, locationInDocView.y,
      locationInDocWorld.x, locationInDocWorld.y,
-     self.worldLayer.position.x, self.worldLayer.position.y, self.zoomScale,
-     self.worldLayer.anchorPoint.x, self.worldLayer.anchorPoint.y,
+     self.mindmapDocLayer.position.x, self.mindmapDocLayer.position.y, self.zoomScale,
+     self.mindmapDocLayer.anchorPoint.x, self.mindmapDocLayer.anchorPoint.y,
      self.viewOrigon.x, self.viewOrigon.y, view_h, view_w,
-        (int)self.worldLayer.sublayers.count,
-    self.worldLayer.frame.origin.x, self.worldLayer.frame.origin.y,
-    self.worldLayer.frame.size.width, self.worldLayer.frame.size.height,
+        (int)self.mindmapDocLayer.sublayers.count,
+    self.mindmapDocLayer.frame.origin.x, self.mindmapDocLayer.frame.origin.y,
+    self.mindmapDocLayer.frame.size.width, self.mindmapDocLayer.frame.size.height,
     tree_node_text(app_state->current_node),
     self.currentNodeFrame.origin.x, self.currentNodeFrame.origin.y,
     self.currentNodeFrame.size.width, self.currentNodeFrame.size.height,
@@ -1251,7 +1339,7 @@ replacementString:(NSString *)string
         self.hitCurrent = NO;
         self.latestMouseViewPoint = [self convertPoint:event.locationInWindow fromView:nil];
         self.p_in_doc_view = [self.layer convertPoint:self.latestMouseViewPoint
-                                        toLayer:self.worldLayer];
+                                        toLayer:self.mindmapDocLayer];
 
         [self performWithoutImplicitAnimation:^{
             [self render_mindmap];

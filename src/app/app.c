@@ -410,6 +410,7 @@ AppState* app_init(const char *data_file) {
     // initialize jump history stack (browser-style: back and forward)
     app->jump_back_stack = stack_create(1024);
     app->jump_forward_stack = stack_create(1024);
+    app->show_breadcrumb_title = true;
     
     // metadata: current node
     app_load_current(app);
@@ -2095,7 +2096,7 @@ static void handle_jump_back(AppState *app) {
     log_debug("[handle_jump_back] After: current_node id=%lu", tree_node_id(app->current_node));
 }
 
-static bool is_topic_node(TreeNode node){
+bool app_is_topic_node(TreeNode node){
     if(tree_node_is_null(node)){
         return false;
     }
@@ -2110,7 +2111,7 @@ static bool is_topic_node(TreeNode node){
 static TreeNode app_node_topic(AppState *app, TreeNode node){
     node = tree_node_parent(app->tree_overlay, node);
     while(!tree_node_is_null(node)){
-        if(is_topic_node(node)){
+        if(app_is_topic_node(node)){
             return node;
         }
         node = tree_node_parent(app->tree_overlay, node);
@@ -2784,6 +2785,12 @@ static void handle_do_command(AppState *app) {
         case CMD_HELLO:{
             log_info("hello command mode");
             app_ui_info_set_message(app, "hello command mode");
+            break;
+        }
+        case CMD_BREADSCRUMB_TOGGLE:{
+            app->show_breadcrumb_title = !app->show_breadcrumb_title;
+            app_ui_info_set_message(app, "breadscrumb %s", app->show_breadcrumb_title ? "ON" : "OFF");
+            log_info("breadscrumb toggled: %s", app->show_breadcrumb_title ? "ON" : "OFF");
             break;
         }
         case CMD_EXIT_SAVE:{

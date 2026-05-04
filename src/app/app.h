@@ -77,6 +77,7 @@ typedef struct AppState {
 
     bool show_ancestors;         // Ctrl+G toggle: flatten ancestors on current node line
     bool tag_mouse_mode;         // 't' tag selection uses left-hand alphabet (mouse-triggered view)
+    bool show_breadcrumb_title;  // :breadscrumb toggle: show path in window title and use full-size content view
 
     // searching
     char *search_query;
@@ -160,5 +161,6 @@ void ui_move_focus_last_child(AppState *app);
 
 void ui_message_fun(void *uc, const char *msg, va_list args);
 void update_current_with_history(AppState *app, TreeNode new_position) ;
+bool app_is_topic_node(TreeNode node);
 
 #endif // APP_H

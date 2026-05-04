@@ -153,16 +153,13 @@ OSStatus HotKeyHandler(EventHandlerCallRef nextHandler,
     NSRect frame = NSMakeRect(0, 0, 900, 600);
 
     self.window = [[NSWindow alloc] initWithContentRect:frame
-                                              styleMask:(NSWindowStyleMaskTitled |
-                                                         NSWindowStyleMaskClosable |
-                                                         NSWindowStyleMaskResizable 
-                                                         )
-                                                backing:NSBackingStoreBuffered
-                                                  defer:NO];
-    self.window.styleMask =
-        NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-        NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable |
-        NSWindowStyleMaskFullSizeContentView;
+        styleMask:(
+            NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+            NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable |
+            NSWindowStyleMaskFullSizeContentView
+        )
+        backing:NSBackingStoreBuffered
+        defer:NO];
 
     self.window.titleVisibility = NSWindowTitleHidden;
     self.window.titlebarAppearsTransparent = YES;
