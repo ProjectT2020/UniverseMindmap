@@ -8,6 +8,8 @@
 #include <unistd.h>
 #include <termios.h>
 #include <stdint.h>
+#include <limits.h>
+#include <errno.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -50,6 +52,49 @@ bool is_hand_on_mouse;
 static TreeNode app_ensure_metadata_node(Operate *operate); ;
 static void handle_add_child_to_tail(AppState *app, TreeNode node) ;
 static void handle_insert_parent_left(AppState *app);
+
+static int spawnp_in_data_file_base_dir(AppState *app, pid_t *pid, const char *file, char *const argv[]) {
+    char old_cwd[PATH_MAX];
+    bool cwd_changed = false;
+
+    if (app && app->data_file_path && app->data_file_path[0] != '\0') {
+        if (getcwd(old_cwd, sizeof(old_cwd)) == NULL) {
+            log_warn("spawnp_in_data_file_base_dir: getcwd failed: %s", strerror(errno));
+        } else {
+            char base_dir[PATH_MAX];
+            const char *last_slash = strrchr(app->data_file_path, '/');
+            if (last_slash == NULL) {
+                snprintf(base_dir, sizeof(base_dir), ".");
+            } else if (last_slash == app->data_file_path) {
+                snprintf(base_dir, sizeof(base_dir), "/");
+            } else {
+                size_t dir_len = (size_t)(last_slash - app->data_file_path);
+                if (dir_len >= sizeof(base_dir)) {
+                    log_warn("spawnp_in_data_file_base_dir: data file base dir is too long: %s", app->data_file_path);
+                    dir_len = sizeof(base_dir) - 1;
+                }
+                memcpy(base_dir, app->data_file_path, dir_len);
+                base_dir[dir_len] = '\0';
+            }
+
+            if (chdir(base_dir) != 0) {
+                log_warn("spawnp_in_data_file_base_dir: chdir('%s') failed: %s", base_dir, strerror(errno));
+            } else {
+                cwd_changed = true;
+            }
+        }
+    }
+
+    int r = posix_spawnp(pid, file, NULL, NULL, argv, NULL);
+
+    if (cwd_changed) {
+        if (chdir(old_cwd) != 0) {
+            log_error("spawnp_in_data_file_base_dir: failed to restore cwd to '%s': %s", old_cwd, strerror(errno));
+        }
+    }
+
+    return r;
+}
 
 
 void app_ui_info_set_message(AppState *app, const char *message, ...) {
@@ -3177,7 +3222,7 @@ static void handle_open_resource_link(AppState *app){
         rendered,
         NULL
     };
-    r = posix_spawnp(&pid, "open", NULL, NULL, argv, NULL);
+    r = spawnp_in_data_file_base_dir(app, &pid, "open", argv);
     if (r != 0) {
         log_error("handle_open_resource_link: Failed to spawn process to open resource link");
         return;
@@ -3216,7 +3261,7 @@ not_MediaWiki_style_ref:
             rendered,
             NULL
         };
-        r = posix_spawnp(&pid, "open", NULL, NULL, argv, NULL);
+        r = spawnp_in_data_file_base_dir(app, &pid, "open", argv);
         if (r != 0) {
             log_error("handle_open_resource_link: Failed to spawn process to open resource link with parent-based template");
             return;
@@ -3281,7 +3326,7 @@ special_parent_type:
             NULL
         };
         spawn_argv = argv;
-        int r = posix_spawnp(&pid, "code", NULL, NULL, spawn_argv, NULL);
+        int r = spawnp_in_data_file_base_dir(app, &pid, "code", spawn_argv);
         if (r != 0) {
             log_error("handle_open_resource_link: Failed to spawn process to open code resource link in code editor");
             return;
@@ -3362,7 +3407,7 @@ special_parent_type:
             NULL
         };
         spawn_argv = argv;
-        int r = posix_spawnp(&pid, "open", NULL, NULL, spawn_argv, NULL);
+        int r = spawnp_in_data_file_base_dir(app, &pid, "open", spawn_argv);
         if (r != 0) {
             log_error("handle_open_resource_link: Failed to spawn process to open page anchor link");
             return;
@@ -3412,7 +3457,7 @@ special_parent_type:
                 NULL
             };
             spawn_argv = argv; 
-            int r = posix_spawnp(&pid, "open", NULL, NULL, spawn_argv, NULL);
+            int r = spawnp_in_data_file_base_dir(app, &pid, "open", spawn_argv);
             if (r != 0) {
                 log_error("handle_open_resource_link: Failed to spawn process to open %s link", key);
                 return; 
@@ -3447,7 +3492,7 @@ special_parent_type:
             NULL
         };
         spawn_argv = argv;
-        int r = posix_spawnp(&pid, "open", NULL, NULL, spawn_argv, NULL);
+        int r = spawnp_in_data_file_base_dir(app, &pid, "open", spawn_argv);
         if (r != 0) {
             log_error("handle_open_resource_link: Failed to spawn process to open URL");
             return;
