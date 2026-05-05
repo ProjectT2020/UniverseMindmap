@@ -1,3 +1,4 @@
+#include <CoreGraphics/CGDisplayFade.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -15,8 +16,18 @@ InputState* input_state_create(){
     return state;
 }
 
-UserOperation input_convert(InputState *input_state, char key, unsigned short keyCode,
+UserOperation input_convert(InputState *input_state, unsigned short key, unsigned short keyCode,
     const char *text, bool isControlDown){
+    switch(key){
+        case u'【':
+            key = '[';
+            break;
+        case u'】':
+            key = ']';
+            break;
+        default:
+          break;
+    }
   if (input_state->type == INPUT_STATE_TYPE_SEARCH_QUERY) {
     input_state->type = INPUT_STATE_DEFAULT;
     return (UserOperation){.type = UO_DO_SEARCH, .data = (void*)strdup(text)};
@@ -113,6 +124,9 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_JUMP_KEYWORD_DEFINITION};
       case 'D':
+      case 'O':
+      case 'L':
+      case 'l':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_OPEN_RESOURCE_LINK};
       case 'S':
@@ -152,9 +166,11 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
     case 'm':
       switch (key) {
       case '[':
+      case u'【':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_MARK_AS_DEFINITION};
       case ']':
+      case u'】':
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_UNMARK_AS_DEFINITION};
       default:
@@ -236,6 +252,7 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
         input_state->type = INPUT_STATE_DEFAULT;
         return (UserOperation){.type = UO_FOLD_LEVEL_1};
        case '.':
+       case u'。':
        case 'z':
          input_state->type = INPUT_STATE_DEFAULT;
          return (UserOperation){.type = UO_CENTER_VIEW};
@@ -311,8 +328,9 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
             input_state->prefix = key;
             return (UserOperation){.type = UO_NOP};
         case '\\':
+        case u'、':
             input_state->type = INPUT_STATE_PREFIX;
-            input_state->prefix = key;
+            input_state->prefix = '\\';
             input_state->prefix_count = 0;
             return (UserOperation){.type = UO_NOP};
         case 'D':
@@ -397,6 +415,7 @@ UserOperation input_convert(InputState *input_state, char key, unsigned short ke
         case 'E':
             return (UserOperation){.type = UO_MOVE_FOCUS_MOST_LEFT_LOWER};
         case '?':
+        case u'？':
             return (UserOperation){.type = UO_SEARCH_BACKWARD};
         case ':':
             return (UserOperation){.type = UO_COMMAND_MODE};

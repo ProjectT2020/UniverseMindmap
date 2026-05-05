@@ -131,6 +131,10 @@ int tree_traverse_with_depth(TreeOverlay *ov, TreeNode n, int64_t depth,
         int (*visit)(TreeNode n, int64_t depth, void *ctx), void *ctx, bool exclude_hidden) ;
 TreeNode tree_node_dfs_next(TreeOverlay *ov, TreeNode n);
 TreeNode tree_node_dfs_prev(TreeOverlay *ov, TreeNode n);
+TreeNode tree_node_dfs_next_with_filter(TreeOverlay *ov, TreeNode n,
+    bool (*filter)(TreeNode n, void *ctx), void *ctx);
+TreeNode tree_node_dfs_prev_with_filter(TreeOverlay *ov, TreeNode n,
+    bool (*filter)(TreeNode n, void *ctx), void *ctx);
 
 // ===== Field accessors =====
 uint64_t tree_node_id(TreeNode n);

@@ -607,6 +607,11 @@ TreeNode operate_search_prev(Operate *operate, TreeNode start_node){
     return (TreeNode){ .kind = TREE_NODE_NULL };// not found
 }
 
+static bool search_exact_skip_meta_filter(TreeNode node, void *ctx) {
+    (void)ctx;
+    return strcmp(tree_node_text(node), ".meta") != 0;
+}
+
 TreeNode operate_search_next_exact(Operate *operate, TreeNode start_node, const char *query){
     if (!operate || tree_node_is_null(start_node) || !query || query[0] == '\0') {
         return (TreeNode){ .kind = TREE_NODE_NULL };
@@ -616,7 +621,12 @@ TreeNode operate_search_next_exact(Operate *operate, TreeNode start_node, const 
     TreeNode current = start_node;
 
     while (true) {
-        TreeNode next_node = tree_node_dfs_next(ov, current);
+        TreeNode next_node = tree_node_dfs_next_with_filter(
+            ov,
+            current,
+            search_exact_skip_meta_filter,
+            NULL
+        );
         if (tree_node_is_null(next_node)) {
             break;
         }
@@ -640,7 +650,12 @@ TreeNode operate_search_prev_exact(Operate *operate, TreeNode start_node, const 
     TreeNode current = start_node;
 
     while (true) {
-        TreeNode prev_node = tree_node_dfs_prev(ov, current);
+        TreeNode prev_node = tree_node_dfs_prev_with_filter(
+            ov,
+            current,
+            search_exact_skip_meta_filter,
+            NULL
+        );
         if (tree_node_is_null(prev_node)) {
             break;
         }

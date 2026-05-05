@@ -1623,13 +1623,14 @@ replacementString:(NSString *)string
     switch (key) {
         default:
             
-            if(('a' <= key && key <= 'z') || ('A' <= key && key <= 'Z') || ('0' <= key && key <= '9') || key == '.' || key == '\''
-                || key == '/' || key == ':'
-                || key == '?'
-                || key == '[' || key == ']' 
+            if(('a' <= key && key <= 'z') || ('A' <= key && key <= 'Z') || ('0' <= key && key <= '9') 
+                || key == '.' || key == '\'' || key == u'。'
+                || key == '/' || key == ':' 
+                || key == '?' || key == u'？'
+                || key == '[' || key == ']' || key == u'【' || key == u'】'
                 || key == '#' || key == '$' || key == '%' || key == '^' || key == '&' || key == '*' || key == '(' || key == ')'
                 || key == '-' || key == '=' || key == ' '
-                || key == '\t' || key == ';' || key == '\\'
+                || key == '\t' || key == ';' || key == '\\' || key == u'、'
                 || key == '\n' || key == '\r'
                 || key == 0x1b   // Escape — cancel prefix/search
                 ){ 

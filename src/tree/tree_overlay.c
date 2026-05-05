@@ -960,6 +960,31 @@ TreeNode tree_node_dfs_next(TreeOverlay *ov, TreeNode n){
     return (TreeNode){ .kind = TREE_NODE_NULL };
 }
 
+TreeNode tree_node_dfs_next_with_filter(TreeOverlay *ov, TreeNode n,
+    bool (*filter)(TreeNode n, void *ctx), void *ctx){
+    if(tree_node_is_null(n) || !filter){
+        return (TreeNode){ .kind = TREE_NODE_NULL };
+    }
+
+    if(filter(n, ctx)){
+        TreeNode first_child = tree_node_first_child_with_filter(ov, n, filter, ctx);
+        if(!tree_node_is_null(first_child)){
+            return first_child;
+        }
+    }
+
+    TreeNode curr = n;
+    while(!tree_node_is_null(curr)){
+        TreeNode next_sibling = tree_node_next_sibling_with_filter(ov, curr, filter, ctx);
+        if(!tree_node_is_null(next_sibling)){
+            return next_sibling;
+        }
+        curr = tree_node_parent(ov, curr);
+    }
+
+    return (TreeNode){ .kind = TREE_NODE_NULL };
+}
+
 TreeNode tree_node_dfs_prev(TreeOverlay *ov, TreeNode n){
     if(tree_node_is_null(n)){
         return (TreeNode){ .kind = TREE_NODE_NULL };
@@ -981,6 +1006,35 @@ TreeNode tree_node_dfs_prev(TreeOverlay *ov, TreeNode n){
         }
     }
     return parent;
+}
+
+TreeNode tree_node_dfs_prev_with_filter(TreeOverlay *ov, TreeNode n,
+    bool (*filter)(TreeNode n, void *ctx), void *ctx){
+    if(tree_node_is_null(n) || !filter){
+        return (TreeNode){ .kind = TREE_NODE_NULL };
+    }
+
+    TreeNode parent = tree_node_parent(ov, n);
+    if(tree_node_is_null(parent)){
+        return (TreeNode){ .kind = TREE_NODE_NULL };
+    }
+
+    TreeNode prev_sibling = tree_node_prev_sibling_with_filter(ov, n, filter, ctx);
+    if(!tree_node_is_null(prev_sibling)){
+        TreeNode curr = prev_sibling;
+        while(true){
+            TreeNode last_child = tree_node_last_child_with_filter(ov, curr, filter, ctx);
+            if(tree_node_is_null(last_child)){
+                return curr;
+            }
+            curr = last_child;
+        }
+    }
+
+    if(filter(parent, ctx)){
+        return parent;
+    }
+    return tree_node_dfs_prev_with_filter(ov, parent, filter, ctx);
 }
 
 // indexing

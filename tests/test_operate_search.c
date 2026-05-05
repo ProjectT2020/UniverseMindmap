@@ -123,6 +123,54 @@ static void test_search_prev_exact_matches_full_text_only(void) {
     assert(tree_node_id(r) == tree_node_id(first_exact));
 }
 
+static void test_search_next_exact_skips_dot_meta_subtree(void) {
+    TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_operate_search_next_exact_skip_meta.umt");
+    assert(ov != NULL);
+
+    TreeNode root = ov->root;
+    TreeNode start = tree_add_first_child(ov, &root, "topic");
+    TreeNode meta = tree_add_sibling(ov, &start, ".meta");
+    TreeNode hidden_match = tree_add_first_child(ov, &meta, "topic");
+    TreeNode visible_match = tree_add_sibling(ov, &meta, "topic");
+
+    assert(!tree_node_is_null(start));
+    assert(!tree_node_is_null(meta));
+    assert(!tree_node_is_null(hidden_match));
+    assert(!tree_node_is_null(visible_match));
+
+    Operate operate = {0};
+    operate.overlay = ov;
+
+    TreeNode r = operate_search_next_exact(&operate, start, "topic");
+    assert(!tree_node_is_null(r));
+    assert(tree_node_id(r) == tree_node_id(visible_match));
+    assert(tree_node_id(r) != tree_node_id(hidden_match));
+}
+
+static void test_search_prev_exact_skips_dot_meta_subtree(void) {
+    TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_operate_search_prev_exact_skip_meta.umt");
+    assert(ov != NULL);
+
+    TreeNode root = ov->root;
+    TreeNode visible_match = tree_add_first_child(ov, &root, "topic");
+    TreeNode meta = tree_add_sibling(ov, &visible_match, ".meta");
+    TreeNode hidden_match = tree_add_first_child(ov, &meta, "topic");
+    TreeNode tail = tree_add_sibling(ov, &meta, "tail");
+
+    assert(!tree_node_is_null(visible_match));
+    assert(!tree_node_is_null(meta));
+    assert(!tree_node_is_null(hidden_match));
+    assert(!tree_node_is_null(tail));
+
+    Operate operate = {0};
+    operate.overlay = ov;
+
+    TreeNode r = operate_search_prev_exact(&operate, tail, "topic");
+    assert(!tree_node_is_null(r));
+    assert(tree_node_id(r) == tree_node_id(visible_match));
+    assert(tree_node_id(r) != tree_node_id(hidden_match));
+}
+
 static void test_bfs_search_prefers_shallower_match(void) {
     TreeOverlay *ov = tree_overlay_create_empty("/tmp/um_operate_bfs_level.umt");
     assert(ov != NULL);
@@ -334,6 +382,8 @@ int main(void) {
     test_search_respects_filter();
     test_search_next_exact_matches_full_text_only();
     test_search_prev_exact_matches_full_text_only();
+    test_search_next_exact_skips_dot_meta_subtree();
+    test_search_prev_exact_skips_dot_meta_subtree();
     test_bfs_search_prefers_shallower_match();
     test_bfs_search_filter_blocks_branch();
     test_gd_hierarchy_filter_skips_dot_metadata();

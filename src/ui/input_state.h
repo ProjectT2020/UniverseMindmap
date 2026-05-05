@@ -29,6 +29,6 @@ typedef struct {
 
 InputState* input_state_create();
 
-UserOperation input_convert(InputState *input_state, char key, unsigned short keyCode,
+UserOperation input_convert(InputState *input_state, unsigned short key, unsigned short keyCode,
     const char *text, bool isControlDown);
 #endif
